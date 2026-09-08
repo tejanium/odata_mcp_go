@@ -29,19 +29,19 @@ func (b *ODataMCPBridge) generateUniversalTool() {
 			"properties": map[string]any{
 				"action": map[string]any{
 					"type":        "string",
-					"description": "Operation: list|get|create|update|delete|count|search|call",
-					"enum":        []string{"list", "get", "create", "update", "delete", "count", "search", "call"},
+					"description": "Operation: info|list|get|create|update|delete|count|search|call",
+					"enum":        []string{"info", "list", "get", "create", "update", "delete", "count", "search", "call"},
 				},
 				"target": map[string]any{
 					"type":        "string",
-					"description": "Entity set name (e.g., 'Products') or function name",
+					"description": "Entity set name (e.g., 'Products') or function name; omit for action=info",
 				},
 				"params": map[string]any{
 					"type":        "object",
 					"description": "Action-specific parameters (filter, select, expand, orderby, top, skip, key, data, method)",
 				},
 			},
-			"required": []string{"action", "target"},
+			"required": []string{"action"},
 		},
 	}
 
@@ -114,6 +114,7 @@ func (b *ODataMCPBridge) generateUniversalDescription() string {
 	// Usage examples
 	sb.WriteString(`
 Actions:
+  info   - Service details, entity capabilities and hints (no target)
   list   - Query entities with filter/select/expand/orderby/top/skip
   get    - Retrieve single entity by key
   create - Create new entity
@@ -128,7 +129,15 @@ Examples:
   action="get" target="Products" params={"key":{"ID":123}}
   action="create" target="Orders" params={"data":{"CustomerID":"C001"}}
   action="call" target="ReleaseOrder" params={"OrderID":"O001"}
+  action="info" (no target) - service details and these hints again
 `)
+
+	// Universal mode registers no separate service info tool, so hints reach
+	// the caller here or not at all.
+	if hintText := b.hintManager.Text(b.config.ServiceURL); hintText != "" {
+		sb.WriteString("\nService hints:\n")
+		sb.WriteString(hintText)
+	}
 
 	return sb.String()
 }
@@ -149,6 +158,11 @@ func (b *ODataMCPBridge) handleUniversalTool(ctx context.Context, args map[strin
 	action, ok := args["action"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing required parameter: action")
+	}
+
+	// "info" describes the service itself, so it takes no target.
+	if action == "info" {
+		return b.handleUniversalServiceInfo()
 	}
 
 	target, ok := args["target"].(string)

@@ -134,32 +134,11 @@ func (m *Manager) SetCLIHint(hintJSON string) error {
 
 // GetHints returns all matching hints for a service URL
 func (m *Manager) GetHints(serviceURL string) map[string]interface{} {
-	var matchingHints []ServiceHint
-
-	// Add CLI hint if present
-	if m.cliHint != nil {
-		matchingHints = append(matchingHints, *m.cliHint)
-	}
-
-	// Find all matching hints
-	for _, hint := range m.hints {
-		if m.matchesPattern(serviceURL, hint.Pattern) {
-			matchingHints = append(matchingHints, hint)
-		}
-	}
+	matchingHints := m.matchingHints(serviceURL)
 
 	// No hints found
 	if len(matchingHints) == 0 {
 		return nil
-	}
-
-	// Sort by priority (higher first)
-	for i := 0; i < len(matchingHints)-1; i++ {
-		for j := i + 1; j < len(matchingHints); j++ {
-			if matchingHints[j].Priority > matchingHints[i].Priority {
-				matchingHints[i], matchingHints[j] = matchingHints[j], matchingHints[i]
-			}
-		}
 	}
 
 	// Merge hints (higher priority overrides)
@@ -238,6 +217,34 @@ func (m *Manager) GetHints(serviceURL string) map[string]interface{} {
 	}
 
 	return result
+}
+
+// matchingHints returns the hints matching serviceURL, highest priority first.
+func (m *Manager) matchingHints(serviceURL string) []ServiceHint {
+	var matchingHints []ServiceHint
+
+	// Add CLI hint if present
+	if m.cliHint != nil {
+		matchingHints = append(matchingHints, *m.cliHint)
+	}
+
+	// Find all matching hints
+	for _, hint := range m.hints {
+		if m.matchesPattern(serviceURL, hint.Pattern) {
+			matchingHints = append(matchingHints, hint)
+		}
+	}
+
+	// Sort by priority (higher first)
+	for i := 0; i < len(matchingHints)-1; i++ {
+		for j := i + 1; j < len(matchingHints); j++ {
+			if matchingHints[j].Priority > matchingHints[i].Priority {
+				matchingHints[i], matchingHints[j] = matchingHints[j], matchingHints[i]
+			}
+		}
+	}
+
+	return matchingHints
 }
 
 // matchesPattern checks if a URL matches a pattern with wildcards
