@@ -210,13 +210,20 @@ func (s *Server) createErrorResponse(id interface{}, code int, message, data str
 		idBytes, _ = json.Marshal(id)
 	}
 
+	// Marshalled rather than interpolated: OData error bodies contain quotes,
+	// and an invalid RawMessage makes the whole response unwritable.
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		dataBytes = json.RawMessage(`""`)
+	}
+
 	return &transport.Message{
 		JSONRPC: "2.0",
 		ID:      idBytes,
 		Error: &transport.Error{
 			Code:    code,
 			Message: message,
-			Data:    json.RawMessage(fmt.Sprintf(`"%s"`, data)),
+			Data:    dataBytes,
 		},
 	}
 }
