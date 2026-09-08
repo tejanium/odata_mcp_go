@@ -21,7 +21,14 @@ func parseODataResponse(data []byte, isV4 bool) (any, error) {
 	return parseV2Response(rawResponse), nil
 }
 
-// parseV2Response handles OData v2 response format
+// jsonLightAliases maps OData V3 JSON-light annotations onto the "@"-prefixed
+// names the rest of the client reads. JSON light has no "d" wrapper.
+var jsonLightAliases = map[string]string{
+	"odata.count":    "@odata.count",
+	"odata.nextLink": "@odata.nextLink",
+}
+
+// parseV2Response handles OData v2 verbose and v3 JSON-light response formats
 func parseV2Response(response map[string]any) any {
 	// OData v2 wraps results in a "d" property
 	if d, ok := response["d"]; ok {
@@ -46,7 +53,36 @@ func parseV2Response(response map[string]any) any {
 		}
 		return d
 	}
-	return response
+
+	return normalizeJSONLight(response)
+}
+
+// normalizeJSONLight rewrites JSON-light annotations to their "@"-prefixed
+// equivalents, leaving an already-normalized response untouched.
+func normalizeJSONLight(response map[string]any) map[string]any {
+	var normalized map[string]any
+
+	for lightName, canonicalName := range jsonLightAliases {
+		value, present := response[lightName]
+		if !present {
+			continue
+		}
+		if _, alreadySet := response[canonicalName]; alreadySet {
+			continue
+		}
+		if normalized == nil {
+			normalized = make(map[string]any, len(response)+len(jsonLightAliases))
+			for key, existing := range response {
+				normalized[key] = existing
+			}
+		}
+		normalized[canonicalName] = value
+	}
+
+	if normalized == nil {
+		return response
+	}
+	return normalized
 }
 
 // parseV4Response handles OData v4 response format
@@ -66,4 +102,3 @@ func parseV4Response(response map[string]any) any {
 	// Otherwise return as-is
 	return response
 }
-
