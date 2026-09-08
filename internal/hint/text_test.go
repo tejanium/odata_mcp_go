@@ -31,12 +31,12 @@ func TestTextIsEmptyWithoutMatchingHints(t *testing.T) {
 func TestTextRendersEverySection(t *testing.T) {
 	m := managerWith(ServiceHint{
 		Pattern:     "*",
-		ServiceType: "Cezanne HR",
+		ServiceType: "Acme HR",
 		KnownIssues: []string{"eq on _Search columns is case sensitive"},
 		Workarounds: []string{"use substringof, not contains"},
 		Notes:       []string{"People carries no email"},
 		EntityHints: map[string]EntityHint{
-			"AllPeopleSearch": {Description: "the only route by email", Notes: []string{"one flat row"}},
+			"ContactSearch": {Description: "the only route by email", Notes: []string{"one flat row"}},
 		},
 		FieldHints: map[string]FieldHint{
 			"ActiveEmployee_Search": {Description: "integer flag", Example: "eq 1"},
@@ -49,7 +49,7 @@ func TestTextRendersEverySection(t *testing.T) {
 	got := m.Text(testServiceURL)
 
 	for _, want := range []string{
-		"Service type: Cezanne HR",
+		"Service type: Acme HR",
 		"Known issues:",
 		"eq on _Search columns is case sensitive",
 		"Workarounds:",
@@ -57,7 +57,7 @@ func TestTextRendersEverySection(t *testing.T) {
 		"Notes:",
 		"People carries no email",
 		"Entity notes:",
-		"AllPeopleSearch: the only route by email one flat row",
+		"ContactSearch: the only route by email one flat row",
 		"Field notes:",
 		"ActiveEmployee_Search: integer flag e.g. eq 1",
 		"Examples:",
@@ -105,10 +105,10 @@ func TestTextDeduplicatesAcrossHints(t *testing.T) {
 func TestTextServiceTypeFollowsHighestPriority(t *testing.T) {
 	m := managerWith(
 		ServiceHint{Pattern: "*", Priority: 1, ServiceType: "Generic OData"},
-		ServiceHint{Pattern: "*/svc/*", Priority: 10, ServiceType: "Cezanne HR"},
+		ServiceHint{Pattern: "*/svc/*", Priority: 10, ServiceType: "Acme HR"},
 	)
 
-	if got := m.Text(testServiceURL); !strings.Contains(got, "Service type: Cezanne HR") {
+	if got := m.Text(testServiceURL); !strings.Contains(got, "Service type: Acme HR") {
 		t.Errorf("Text() = %q, want the higher-priority service type", got)
 	}
 }
@@ -156,14 +156,14 @@ func TestTextIsStableAcrossCalls(t *testing.T) {
 func TestGetHintsStillWorksAfterMatchingExtraction(t *testing.T) {
 	m := managerWith(
 		ServiceHint{Pattern: "*", Priority: 1, ServiceType: "Generic OData", Notes: []string{"low"}},
-		ServiceHint{Pattern: "*/svc/*", Priority: 10, ServiceType: "Cezanne HR", Notes: []string{"high"}},
+		ServiceHint{Pattern: "*/svc/*", Priority: 10, ServiceType: "Acme HR", Notes: []string{"high"}},
 	)
 
 	hints := m.GetHints(testServiceURL)
 	if hints == nil {
 		t.Fatal("GetHints() = nil, want the matching hints")
 	}
-	if got := hints["service_type"]; got != "Cezanne HR" {
+	if got := hints["service_type"]; got != "Acme HR" {
 		t.Errorf("service_type = %v, want the higher-priority value", got)
 	}
 

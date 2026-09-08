@@ -77,13 +77,13 @@ func TestUniversalToolDescriptionCarriesCLIHint(t *testing.T) {
 	service := newMetadataOnlyService(t)
 
 	cfg := universalConfig(service.URL + "/odata/")
-	cfg.Hint = `{"notes":["People carries no email; use AllPeopleSearch"],` +
+	cfg.Hint = `{"notes":["Contacts carries no email; use ContactSearch"],` +
 		`"known_issues":["eq on _Search columns is case sensitive"]}`
 
 	_, description := universalTool(t, cfg)
 
 	assert.Contains(t, description, "Service hints:")
-	assert.Contains(t, description, "People carries no email; use AllPeopleSearch")
+	assert.Contains(t, description, "Contacts carries no email; use ContactSearch")
 	assert.Contains(t, description, "eq on _Search columns is case sensitive")
 }
 
@@ -151,7 +151,7 @@ func TestUniversalInfoActionReturnsHints(t *testing.T) {
 	service := newMetadataOnlyService(t)
 
 	cfg := universalConfig(service.URL + "/odata/")
-	cfg.Hint = `{"notes":["People carries no email; use AllPeopleSearch"]}`
+	cfg.Hint = `{"notes":["Contacts carries no email; use ContactSearch"]}`
 
 	odataBridge, _ := universalTool(t, cfg)
 
@@ -166,7 +166,7 @@ func TestUniversalInfoActionReturnsHints(t *testing.T) {
 
 	hints, ok := info["implementation_hints"].(map[string]any)
 	require.True(t, ok, "info should carry implementation_hints, got %v", info["implementation_hints"])
-	assert.Contains(t, fmt.Sprint(hints["notes"]), "People carries no email")
+	assert.Contains(t, fmt.Sprint(hints["notes"]), "Contacts carries no email")
 }
 
 func TestUniversalActionsStillRequireATarget(t *testing.T) {
