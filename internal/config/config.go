@@ -20,6 +20,13 @@ type Config struct {
 	CookieString string            `mapstructure:"cookie_string"`
 	Cookies      map[string]string // Parsed cookies
 
+	// OAuth 2.0 client credentials
+	OAuthClientID     string `mapstructure:"oauth_client_id"`
+	OAuthClientSecret string `mapstructure:"oauth_client_secret"`
+	OAuthTokenURL     string `mapstructure:"oauth_token_url"`
+	OAuthScope        string `mapstructure:"oauth_scope"`
+	OAuthClientAuth   string `mapstructure:"oauth_client_auth"`
+
 	// Tool naming options
 	ToolPrefix  string `mapstructure:"tool_prefix"`
 	ToolPostfix string `mapstructure:"tool_postfix"`
@@ -82,6 +89,17 @@ func (c *Config) HasBasicAuth() bool {
 // HasCookieAuth returns true if cookies are configured
 func (c *Config) HasCookieAuth() bool {
 	return len(c.Cookies) > 0
+}
+
+// HasOAuthAuth returns true if OAuth client credentials are configured
+func (c *Config) HasOAuthAuth() bool {
+	return c.OAuthClientID != "" && c.OAuthClientSecret != "" && c.OAuthTokenURL != ""
+}
+
+// HasAnyOAuthSetting returns true if any OAuth field is set, complete or not
+func (c *Config) HasAnyOAuthSetting() bool {
+	return c.OAuthClientID != "" || c.OAuthClientSecret != "" ||
+		c.OAuthTokenURL != "" || c.OAuthScope != "" || c.OAuthClientAuth != ""
 }
 
 // UsePostfix returns true if tool postfix should be used instead of prefix

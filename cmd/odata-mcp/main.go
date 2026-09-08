@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/zmcp/odata-mcp/internal/auth"
 	"github.com/zmcp/odata-mcp/internal/bridge"
 	"github.com/zmcp/odata-mcp/internal/config"
 	"github.com/zmcp/odata-mcp/internal/debug"
@@ -65,6 +66,13 @@ func init() {
 	rootCmd.Flags().StringVar(&cfg.Password, "pass", "", "Password for basic authentication (alias for --password)")
 	rootCmd.Flags().StringVar(&cfg.CookieFile, "cookie-file", "", "Path to cookie file in Netscape format")
 	rootCmd.Flags().StringVar(&cfg.CookieString, "cookie-string", "", "Cookie string (key1=val1; key2=val2)")
+
+	// OAuth 2.0 client credentials flags
+	rootCmd.Flags().StringVar(&cfg.OAuthClientID, "oauth-client-id", "", "OAuth 2.0 client ID (overrides OAUTH_CLIENT_ID env var)")
+	rootCmd.Flags().StringVar(&cfg.OAuthClientSecret, "oauth-client-secret", "", "OAuth 2.0 client secret (overrides OAUTH_CLIENT_SECRET env var)")
+	rootCmd.Flags().StringVar(&cfg.OAuthTokenURL, "oauth-token-url", "", "OAuth 2.0 token endpoint URL (overrides OAUTH_TOKEN_URL env var)")
+	rootCmd.Flags().StringVar(&cfg.OAuthScope, "oauth-scope", "", "OAuth 2.0 scope (overrides OAUTH_SCOPE env var)")
+	rootCmd.Flags().StringVar(&cfg.OAuthClientAuth, "oauth-client-auth", "", "How to send client credentials to the token endpoint: 'basic' (default) or 'body'")
 
 	// Tool naming options
 	rootCmd.Flags().StringVar(&cfg.ToolPrefix, "tool-prefix", "", "Custom prefix for tool names (use with --no-postfix)")
@@ -418,8 +426,13 @@ func validateHTTPTransport(securityCfg http.SecurityConfig) error {
 }
 
 func processAuthentication(cfg *config.Config) error {
+	resolveOAuthFromEnvironment(cfg)
+
 	// Check for mutually exclusive authentication options
 	authMethods := 0
+	if cfg.HasAnyOAuthSetting() {
+		authMethods++
+	}
 	if cfg.CookieFile != "" {
 		authMethods++
 	}
@@ -432,6 +445,10 @@ func processAuthentication(cfg *config.Config) error {
 
 	if authMethods > 1 {
 		return fmt.Errorf("only one authentication method can be used at a time")
+	}
+
+	if cfg.HasAnyOAuthSetting() {
+		return processOAuthAuthentication(cfg)
 	}
 
 	// Process cookie file authentication
@@ -509,6 +526,54 @@ func processAuthentication(cfg *config.Config) error {
 			}
 		} else if cfg.Verbose && len(cfg.Cookies) == 0 {
 			fmt.Fprintf(os.Stderr, "[VERBOSE] No authentication provided or configured. Attempting anonymous access.\n")
+		}
+	}
+
+	return nil
+}
+
+// resolveOAuthFromEnvironment fills unset OAuth fields, preferring the bare
+// OAUTH_* names the Python implementation uses over viper's ODATA_ prefix.
+func resolveOAuthFromEnvironment(cfg *config.Config) {
+	fields := []struct {
+		target *string
+		name   string
+	}{
+		{&cfg.OAuthClientID, "OAUTH_CLIENT_ID"},
+		{&cfg.OAuthClientSecret, "OAUTH_CLIENT_SECRET"},
+		{&cfg.OAuthTokenURL, "OAUTH_TOKEN_URL"},
+		{&cfg.OAuthScope, "OAUTH_SCOPE"},
+		{&cfg.OAuthClientAuth, "OAUTH_CLIENT_AUTH"},
+	}
+
+	for _, field := range fields {
+		if *field.target != "" {
+			continue
+		}
+		if value := os.Getenv(field.name); value != "" {
+			*field.target = value
+			continue
+		}
+		*field.target = viper.GetString(field.name)
+	}
+}
+
+func processOAuthAuthentication(cfg *config.Config) error {
+	oauthConfig := auth.OAuthConfig{
+		ClientID:     cfg.OAuthClientID,
+		ClientSecret: cfg.OAuthClientSecret,
+		TokenURL:     cfg.OAuthTokenURL,
+		Scope:        cfg.OAuthScope,
+		ClientAuth:   cfg.OAuthClientAuth,
+	}
+	if err := oauthConfig.Validate(); err != nil {
+		return err
+	}
+
+	if cfg.Verbose {
+		fmt.Fprintf(os.Stderr, "[VERBOSE] Using OAuth 2.0 client credentials, token URL: %s\n", cfg.OAuthTokenURL)
+		if cfg.OAuthScope != "" {
+			fmt.Fprintf(os.Stderr, "[VERBOSE] OAuth scope: %s\n", cfg.OAuthScope)
 		}
 	}
 
