@@ -4,6 +4,7 @@
 package client
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,12 @@ type contextKey string
 
 const HTTPHeadersContextKey contextKey = "mcp-http-headers"
 
+// TokenSource supplies an Authorization header value, refreshing the
+// underlying credential as needed.
+type TokenSource interface {
+	AuthorizationHeader(ctx context.Context) (string, error)
+}
+
 // ODataClient handles HTTP communication with OData services
 type ODataClient struct {
 	baseURL        string
@@ -23,6 +30,7 @@ type ODataClient struct {
 	cookies        map[string]string
 	username       string
 	password       string
+	tokenSource    TokenSource
 	csrfToken      string
 	verbose        bool
 	sessionCookies []*http.Cookie // Track session cookies from server
@@ -55,6 +63,11 @@ func (c *ODataClient) SetBasicAuth(username, password string) {
 // SetCookies configures cookie authentication
 func (c *ODataClient) SetCookies(cookies map[string]string) {
 	c.cookies = cookies
+}
+
+// SetTokenSource configures bearer token authentication
+func (c *ODataClient) SetTokenSource(source TokenSource) {
+	c.tokenSource = source
 }
 
 // Helper function for min

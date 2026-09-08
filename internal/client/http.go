@@ -57,6 +57,15 @@ func (c *ODataClient) buildRequest(ctx context.Context, method, endpoint string,
 		if c.verbose {
 			fmt.Fprintf(os.Stderr, "[VERBOSE] Using configured basic auth\n")
 		}
+	} else if c.tokenSource != nil {
+		header, err := c.tokenSource.AuthorizationHeader(ctx)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set(constants.Authorization, header)
+		if c.verbose {
+			fmt.Fprintf(os.Stderr, "[VERBOSE] Using configured OAuth bearer token\n")
+		}
 	}
 
 	// Set cookies

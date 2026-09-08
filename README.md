@@ -82,7 +82,7 @@ This release fixes 10 open issues:
 
 - **Universal OData Support**: Works with both OData v2 and v4 services
 - **Dynamic Tool Generation**: Automatically creates MCP tools based on OData metadata
-- **Multiple Authentication Methods**: Basic auth, cookie auth, and anonymous access
+- **Multiple Authentication Methods**: OAuth 2.0 client credentials, basic auth, cookie auth, and anonymous access
 - **SAP OData Extensions**: Full support for SAP-specific OData features including CSRF tokens
 - **Comprehensive CRUD Operations**: Generated tools for create, read, update, delete operations
 - **Advanced Query Support**: OData query options ($filter, $select, $expand, $orderby, etc.)
@@ -543,6 +543,12 @@ export ODATA_SERVICE_URL=https://services.odata.org/V2/Northwind/Northwind.svc/
 # Cookie string authentication  
 ./odata-mcp --cookie-string "session=abc123; token=xyz789" https://my-service.com/odata/
 
+# OAuth 2.0 client credentials (see OAUTH_AUTH.md)
+./odata-mcp --oauth-client-id ID --oauth-client-secret SECRET \
+  --oauth-token-url https://auth.example.com/oauth/token \
+  --oauth-scope "https://graph.microsoft.com/.default" \
+  https://my-service.com/odata/
+
 # Environment variables
 export ODATA_USERNAME=admin
 export ODATA_PASSWORD=secret
@@ -691,6 +697,11 @@ The OData MCP bridge includes a flexible hint system to provide guidance for ser
 | `-p, --password` | Password for basic auth | |
 | `--cookie-file` | Path to cookie file (Netscape format) | |
 | `--cookie-string` | Cookie string (key1=val1; key2=val2) | |
+| `--oauth-client-id` | OAuth 2.0 client ID | |
+| `--oauth-client-secret` | OAuth 2.0 client secret | |
+| `--oauth-token-url` | OAuth 2.0 token endpoint URL | |
+| `--oauth-scope` | OAuth 2.0 scope | |
+| `--oauth-client-auth` | Send client credentials as `basic` or `body` | `basic` |
 | `--tool-prefix` | Custom prefix for tool names | |
 | `--tool-postfix` | Custom postfix for tool names | |
 | `--no-postfix` | Use prefix instead of postfix | `false` |
@@ -738,6 +749,11 @@ The OData MCP bridge includes a flexible hint system to provide guidance for ser
 | `ODATA_PASSWORD` or `ODATA_PASS` | Password for basic auth |
 | `ODATA_COOKIE_FILE` | Path to cookie file |
 | `ODATA_COOKIE_STRING` | Cookie string |
+| `OAUTH_CLIENT_ID` or `ODATA_OAUTH_CLIENT_ID` | OAuth 2.0 client ID |
+| `OAUTH_CLIENT_SECRET` or `ODATA_OAUTH_CLIENT_SECRET` | OAuth 2.0 client secret |
+| `OAUTH_TOKEN_URL` or `ODATA_OAUTH_TOKEN_URL` | OAuth 2.0 token endpoint URL |
+| `OAUTH_SCOPE` or `ODATA_OAUTH_SCOPE` | OAuth 2.0 scope |
+| `OAUTH_CLIENT_AUTH` or `ODATA_OAUTH_CLIENT_AUTH` | `basic` (default) or `body` |
 
 ### .env File Support
 

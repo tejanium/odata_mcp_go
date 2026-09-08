@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/zmcp/odata-mcp/internal/auth"
 	"github.com/zmcp/odata-mcp/internal/client"
 	"github.com/zmcp/odata-mcp/internal/config"
 	"github.com/zmcp/odata-mcp/internal/constants"
@@ -39,7 +40,20 @@ func NewODataMCPBridge(cfg *config.Config) (*ODataMCPBridge, error) {
 	odataClient := client.NewODataClient(cfg.ServiceURL, cfg.Verbose)
 
 	// Configure authentication
-	if cfg.HasBasicAuth() {
+	if cfg.HasOAuthAuth() {
+		tokenSource, err := auth.NewOAuthTokenSource(auth.OAuthConfig{
+			ClientID:     cfg.OAuthClientID,
+			ClientSecret: cfg.OAuthClientSecret,
+			TokenURL:     cfg.OAuthTokenURL,
+			Scope:        cfg.OAuthScope,
+			ClientAuth:   cfg.OAuthClientAuth,
+			Verbose:      cfg.Verbose,
+		})
+		if err != nil {
+			return nil, err
+		}
+		odataClient.SetTokenSource(tokenSource)
+	} else if cfg.HasBasicAuth() {
 		odataClient.SetBasicAuth(cfg.Username, cfg.Password)
 	} else if cfg.HasCookieAuth() {
 		odataClient.SetCookies(cfg.Cookies)
@@ -440,7 +454,9 @@ func (b *ODataMCPBridge) GetTraceInfo() (*models.TraceInfo, error) {
 	defer b.mu.RUnlock()
 
 	authType := "None (anonymous)"
-	if b.config.HasBasicAuth() {
+	if b.config.HasOAuthAuth() {
+		authType = fmt.Sprintf("OAuth 2.0 client credentials (client: %s)", b.config.OAuthClientID)
+	} else if b.config.HasBasicAuth() {
 		authType = fmt.Sprintf("Basic (user: %s)", b.config.Username)
 	} else if b.config.HasCookieAuth() {
 		authType = fmt.Sprintf("Cookie (%d cookies)", len(b.config.Cookies))
