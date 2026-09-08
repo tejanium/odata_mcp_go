@@ -5,8 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 )
+
+// patternCache memoises compiled wildcard patterns, which are matched once per
+// hint per lookup and never change.
+var patternCache sync.Map
 
 // ServiceHint represents hints for a specific service pattern
 type ServiceHint struct {
@@ -247,66 +253,54 @@ func (m *Manager) matchingHints(serviceURL string) []ServiceHint {
 	return matchingHints
 }
 
-// matchesPattern checks if a URL matches a pattern with wildcards
+// matchesPattern checks if a URL matches a pattern with wildcards,
+// where * is any sequence of characters and ? is a single character.
 func (m *Manager) matchesPattern(url, pattern string) bool {
 	// Direct match
 	if url == pattern {
 		return true
 	}
 
-	// Convert pattern to regex-like matching
-	// * matches any sequence of characters
-	// ? matches a single character
-
-	// Escape special regex characters except * and ?
-	pattern = strings.ReplaceAll(pattern, ".", "\\.")
-	pattern = strings.ReplaceAll(pattern, "+", "\\+")
-	pattern = strings.ReplaceAll(pattern, "^", "\\^")
-	pattern = strings.ReplaceAll(pattern, "$", "\\$")
-	pattern = strings.ReplaceAll(pattern, "(", "\\(")
-	pattern = strings.ReplaceAll(pattern, ")", "\\)")
-	pattern = strings.ReplaceAll(pattern, "[", "\\[")
-	pattern = strings.ReplaceAll(pattern, "]", "\\]")
-	pattern = strings.ReplaceAll(pattern, "{", "\\{")
-	pattern = strings.ReplaceAll(pattern, "}", "\\}")
-	pattern = strings.ReplaceAll(pattern, "|", "\\|")
-
-	// Convert wildcards
-	parts := strings.Split(pattern, "*")
-
-	// Check if URL contains all parts in order
-	currentPos := 0
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-
-		// Replace ? with single character match
-		part = strings.ReplaceAll(part, "?", ".")
-
-		// Find part in URL
-		idx := strings.Index(url[currentPos:], part)
-		if idx == -1 {
-			return false
-		}
-
-		// For first part, must match at beginning unless pattern starts with *
-		if i == 0 && pattern[0] != '*' && idx != 0 {
-			return false
-		}
-
-		currentPos += idx + len(part)
+	compiled, err := compileWildcardPattern(pattern)
+	if err != nil {
+		return false
 	}
 
-	// For last part, must match at end unless pattern ends with *
-	if len(parts) > 0 && pattern[len(pattern)-1] != '*' {
-		lastPart := parts[len(parts)-1]
-		if lastPart != "" && !strings.HasSuffix(url, lastPart) {
-			return false
+	return compiled.MatchString(url)
+}
+
+// compileWildcardPattern builds an anchored regexp from a wildcard pattern.
+// Everything but * and ? is quoted, so a pattern may contain a dot or a slash.
+func compileWildcardPattern(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := patternCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+
+	var expression strings.Builder
+	expression.WriteString("^")
+
+	for i, anySequence := range strings.Split(pattern, "*") {
+		if i > 0 {
+			expression.WriteString(".*")
+		}
+		for j, literal := range strings.Split(anySequence, "?") {
+			if j > 0 {
+				expression.WriteString(".")
+			}
+			expression.WriteString(regexp.QuoteMeta(literal))
 		}
 	}
 
-	return true
+	expression.WriteString("$")
+
+	compiled, err := regexp.Compile(expression.String())
+	if err != nil {
+		return nil, err
+	}
+
+	patternCache.Store(pattern, compiled)
+
+	return compiled, nil
 }
 
 // mergeStringSlices merges two string slices, avoiding duplicates
