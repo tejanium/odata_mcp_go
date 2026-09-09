@@ -27,6 +27,13 @@ type Config struct {
 	OAuthScope        string `mapstructure:"oauth_scope"`
 	OAuthClientAuth   string `mapstructure:"oauth_client_auth"`
 
+	// Bearer token presented as-is, for a token an administrator minted
+	BearerToken string `mapstructure:"bearer_token"`
+
+	// Multi-tenant serving
+	MultiTenant        bool   `mapstructure:"multi_tenant"`
+	AllowedServiceURLs string `mapstructure:"allowed_service_urls"`
+
 	// Tool naming options
 	ToolPrefix  string `mapstructure:"tool_prefix"`
 	ToolPostfix string `mapstructure:"tool_postfix"`
@@ -94,6 +101,11 @@ func (c *Config) HasCookieAuth() bool {
 // HasOAuthAuth returns true if OAuth client credentials are configured
 func (c *Config) HasOAuthAuth() bool {
 	return c.OAuthClientID != "" && c.OAuthClientSecret != "" && c.OAuthTokenURL != ""
+}
+
+// HasBearerAuth returns true if a bearer token is configured
+func (c *Config) HasBearerAuth() bool {
+	return c.BearerToken != ""
 }
 
 // HasAnyOAuthSetting returns true if any OAuth field is set, complete or not
