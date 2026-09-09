@@ -8,15 +8,17 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/zmcp/odata-mcp/internal/constants"
 )
 
 // Headers a caller may use to select the service and credentials per request.
 const (
-	HeaderServiceURL   = "X-OData-Service-Url"
-	HeaderClientID     = "X-OData-Client-Id"
-	HeaderClientSecret = "X-OData-Client-Secret"
-	HeaderTokenURL     = "X-OData-Token-Url"
-	HeaderScope        = "X-OData-Scope"
+	HeaderServiceURL   = constants.HeaderODataServiceURL
+	HeaderClientID     = constants.HeaderODataClientID
+	HeaderClientSecret = constants.HeaderODataClientSecret
+	HeaderTokenURL     = constants.HeaderODataTokenURL
+	HeaderScope        = constants.HeaderODataScope
 )
 
 const bearerPrefix = "bearer "
