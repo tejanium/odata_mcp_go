@@ -40,7 +40,13 @@ func NewODataMCPBridge(cfg *config.Config) (*ODataMCPBridge, error) {
 	odataClient := client.NewODataClient(cfg.ServiceURL, cfg.Verbose)
 
 	// Configure authentication
-	if cfg.HasOAuthAuth() {
+	if cfg.HasBearerAuth() {
+		tokenSource, err := auth.NewStaticTokenSource(cfg.BearerToken)
+		if err != nil {
+			return nil, err
+		}
+		odataClient.SetTokenSource(tokenSource)
+	} else if cfg.HasOAuthAuth() {
 		tokenSource, err := auth.NewOAuthTokenSource(auth.OAuthConfig{
 			ClientID:     cfg.OAuthClientID,
 			ClientSecret: cfg.OAuthClientSecret,

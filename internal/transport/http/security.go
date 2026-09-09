@@ -19,6 +19,7 @@ type SecurityConfig struct {
 	TLSCert            string // Path to TLS certificate
 	TLSKey             string // Path to TLS key
 	AllowAllInterfaces bool   // Explicit flag to allow 0.0.0.0/::
+	PerRequestAuth     bool   // Callers authenticate per request, so no shared token
 }
 
 // ValidateHTTPSecurity validates security configuration for HTTP transport.
@@ -34,7 +35,7 @@ func ValidateHTTPSecurity(cfg SecurityConfig) error {
 		if !cfg.AllowAllInterfaces {
 			return fmt.Errorf("binding to all interfaces (0.0.0.0/::) requires --allow-all-interfaces flag")
 		}
-		if cfg.Token == "" {
+		if cfg.Token == "" && !cfg.PerRequestAuth {
 			return fmt.Errorf("--mcp-token required when binding to all interfaces")
 		}
 		if !cfg.TLSEnabled {
@@ -45,14 +46,14 @@ func ValidateHTTPSecurity(cfg SecurityConfig) error {
 
 	// Localhost bindings: token always required
 	if IsLoopbackAddr(cfg.Addr) {
-		if cfg.Token == "" {
+		if cfg.Token == "" && !cfg.PerRequestAuth {
 			return fmt.Errorf("--mcp-token required for HTTP transport")
 		}
 		return nil
 	}
 
 	// Non-localhost bindings: token + TLS required, no exceptions
-	if cfg.Token == "" {
+	if cfg.Token == "" && !cfg.PerRequestAuth {
 		return fmt.Errorf("--mcp-token required for non-localhost binding")
 	}
 	if !cfg.TLSEnabled {
@@ -166,7 +167,7 @@ func SecurityMiddleware(cfg SecurityConfig, next http.Handler) http.Handler {
 
 		// An ungated endpoint stays loopback-only, mirroring the configuration
 		// ValidateHTTPSecurity enforces at startup.
-		if cfg.Token == "" && !isLocalhost(r.RemoteAddr) && !isLocalhost(r.Host) {
+		if cfg.Token == "" && !cfg.PerRequestAuth && !isLocalhost(r.RemoteAddr) && !isLocalhost(r.Host) {
 			http.Error(w, "Remote connections require --mcp-token with --tls and --allow-all-interfaces", http.StatusForbidden)
 			return
 		}

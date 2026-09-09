@@ -8,10 +8,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	nethttp "net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -19,8 +21,11 @@ import (
 
 	"github.com/zmcp/odata-mcp/internal/auth"
 	"github.com/zmcp/odata-mcp/internal/bridge"
+	"github.com/zmcp/odata-mcp/internal/client"
 	"github.com/zmcp/odata-mcp/internal/config"
 	"github.com/zmcp/odata-mcp/internal/debug"
+	"github.com/zmcp/odata-mcp/internal/registry"
+	"github.com/zmcp/odata-mcp/internal/tenant"
 	"github.com/zmcp/odata-mcp/internal/transport"
 	"github.com/zmcp/odata-mcp/internal/transport/http"
 	"github.com/zmcp/odata-mcp/internal/transport/stdio"
@@ -127,6 +132,9 @@ func init() {
 	rootCmd.Flags().String("tls-cert", "", "Path to TLS certificate file")
 	rootCmd.Flags().String("tls-key", "", "Path to TLS private key file")
 	rootCmd.Flags().Bool("allow-all-interfaces", false, "Allow binding to all interfaces (0.0.0.0/::) - requires token and TLS")
+	rootCmd.Flags().StringVar(&cfg.BearerToken, "bearer-token", "", "Bearer token presented to the OData service (overrides ODATA_BEARER_TOKEN env var)")
+	rootCmd.Flags().BoolVar(&cfg.MultiTenant, "multi-tenant", false, "Serve several OData services from one process, taking credentials from request headers")
+	rootCmd.Flags().StringVar(&cfg.AllowedServiceURLs, "allowed-service-urls", "", "Comma-separated service URLs a caller may select with the X-OData-Service-Url header")
 
 	// Debug options
 	rootCmd.Flags().Bool("trace-mcp", false, "Enable trace logging to debug MCP communication")
@@ -228,13 +236,15 @@ func runBridge(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if cfg.ServiceURL == "" {
+	if cfg.ServiceURL == "" && !cfg.MultiTenant {
 		return fmt.Errorf("OData service URL not provided. Use --service flag, positional argument, or ODATA_URL environment variable")
 	}
 
-	// Validate and process authentication
-	if err := processAuthentication(cfg); err != nil {
-		return err
+	// Multi-tenant mode takes credentials per request, so there may be none here.
+	if !cfg.MultiTenant {
+		if err := processAuthentication(cfg); err != nil {
+			return err
+		}
 	}
 
 	// Validate max-items parameter
@@ -263,6 +273,10 @@ func runBridge(cmd *cobra.Command, args []string) error {
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	if cfg.MultiTenant {
+		return runMultiTenant(cmd, cfg, sigChan)
+	}
 
 	// Create and initialize bridge
 	odataBridge, err := bridge.NewODataMCPBridge(cfg)
@@ -682,5 +696,106 @@ func main() {
 		fmt.Fprintf(os.Stderr, "An unexpected error occurred: %v\n", err)
 		fmt.Fprintf(os.Stderr, "-------------------\n")
 		os.Exit(1)
+	}
+}
+
+// shutdownGrace outlives the transport's own 5s drain.
+const shutdownGrace = 10 * time.Second
+
+// runMultiTenant serves several OData services from one process. Each request
+// carries its own service and credentials, so nothing is fetched at startup.
+func runMultiTenant(cmd *cobra.Command, cfg *config.Config, sigChan chan os.Signal) error {
+	transportType, _ := cmd.Flags().GetString("transport")
+	if transportType != "streamable-http" && transportType != "streamable" {
+		return fmt.Errorf("--multi-tenant requires --transport streamable-http, because credentials arrive as request headers")
+	}
+
+	securityCfg, err := buildSecurityConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	// The caller's own credential is the gate, so no shared --mcp-token applies.
+	securityCfg.PerRequestAuth = true
+	if securityCfg.Token != "" {
+		return fmt.Errorf("--multi-tenant and --mcp-token are mutually exclusive: each caller authenticates with its own credential")
+	}
+
+	if err := validateHTTPTransport(securityCfg); err != nil {
+		return err
+	}
+
+	resolver := registry.Resolver{
+		Defaults: registry.Credentials{
+			ServiceURL:   cfg.ServiceURL,
+			BearerToken:  cfg.BearerToken,
+			ClientID:     cfg.OAuthClientID,
+			ClientSecret: cfg.OAuthClientSecret,
+			TokenURL:     cfg.OAuthTokenURL,
+			Scope:        cfg.OAuthScope,
+		},
+		AllowedServiceURLs: parseCommaSeparated(cfg.AllowedServiceURLs),
+	}
+
+	sharedCfg := *cfg
+	bridges := registry.New(tenant.Factory(&sharedCfg))
+
+	handler := func(ctx context.Context, msg *transport.Message) (*transport.Message, error) {
+		headers, _ := ctx.Value(client.HTTPHeadersContextKey).(nethttp.Header)
+
+		creds, err := resolver.Resolve(headers)
+		if err != nil {
+			return credentialFailure(msg, err), nil
+		}
+
+		tenant, err := bridges.For(ctx, creds)
+		if err != nil {
+			return credentialFailure(msg, err), nil
+		}
+
+		return tenant.HandleMessage(ctx, msg)
+	}
+
+	if cfg.Verbose {
+		fmt.Fprintf(os.Stderr, "[VERBOSE] Multi-tenant mode on %s, credentials taken from request headers\n", securityCfg.Addr)
+	}
+
+	trans := http.NewStreamableHTTP(securityCfg, handler, true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errChan := make(chan error, 1)
+	go func() { errChan <- trans.Start(ctx) }()
+
+	select {
+	case sig := <-sigChan:
+		fmt.Fprintf(os.Stderr, "\n%s received, shutting down server...\n", sig)
+		cancel()
+
+		// The transport drains in-flight requests on the way out, so wait for
+		// it rather than cutting them off by returning from main.
+		select {
+		case <-errChan:
+		case <-time.After(shutdownGrace):
+			fmt.Fprintf(os.Stderr, "shutdown did not finish within %s, exiting anyway\n", shutdownGrace)
+		}
+
+		return nil
+	case err := <-errChan:
+		return err
+	}
+}
+
+// credentialFailure reports a rejected credential as a JSON-RPC error, so the
+// caller sees why rather than a dropped connection.
+func credentialFailure(msg *transport.Message, err error) *transport.Message {
+	return &transport.Message{
+		JSONRPC: "2.0",
+		ID:      msg.ID,
+		Error: &transport.Error{
+			Code:    -32001,
+			Message: err.Error(),
+		},
 	}
 }
