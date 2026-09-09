@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/zmcp/odata-mcp/internal/constants"
@@ -21,6 +22,10 @@ type EDMX struct {
 type DataServices struct {
 	XMLName xml.Name `xml:"DataServices"`
 	Schemas []Schema `xml:"Schema"`
+
+	// DataServiceVersion is the OData version. Edmx.Version is the EDMX
+	// document version, which is "1.0" for both OData V2 and V3.
+	DataServiceVersion string `xml:"DataServiceVersion,attr"`
 }
 
 // Schema contains entity types, entity sets, and function imports
@@ -132,6 +137,7 @@ func ParseMetadata(data []byte, serviceRoot string) (*models.ODataMetadata, erro
 		EntitySets:      make(map[string]*models.EntitySet),
 		FunctionImports: make(map[string]*models.FunctionImport),
 		Version:         edmx.Version,
+		ODataVersion:    odataVersion(edmx),
 		ParsedAt:        time.Now(),
 	}
 
@@ -277,4 +283,14 @@ func parseFunctionImport(fi FunctionImport) *models.FunctionImport {
 	}
 
 	return functionImport
+}
+
+// odataVersion reports the service's OData version, preferring the
+// DataServiceVersion attribute and falling back to the EDMX version for V4.
+func odataVersion(edmx EDMX) string {
+	if declared := strings.TrimSuffix(strings.TrimSpace(edmx.DataServices.DataServiceVersion), ";"); declared != "" {
+		return declared
+	}
+
+	return ""
 }

@@ -90,6 +90,7 @@ type ODataMetadata struct {
 	SchemaNamespace string                     `json:"schema_namespace"`
 	ContainerName   string                     `json:"container_name"`
 	Version         string                     `json:"version"`
+	ODataVersion    string                     `json:"odata_version,omitempty"`
 	ParsedAt        time.Time                  `json:"parsed_at"`
 }
 
