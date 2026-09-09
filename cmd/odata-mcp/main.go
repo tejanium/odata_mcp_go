@@ -737,6 +737,10 @@ func runMultiTenant(cmd *cobra.Command, cfg *config.Config, sigChan chan os.Sign
 			Scope:        cfg.OAuthScope,
 		},
 		AllowedServiceURLs: parseCommaSeparated(cfg.AllowedServiceURLs),
+
+		// Every caller brings its own credential, so a configured secret must
+		// never stand in for one that is missing from the request.
+		RequireRequestCredentials: true,
 	}
 
 	sharedCfg := *cfg
@@ -756,6 +760,10 @@ func runMultiTenant(cmd *cobra.Command, cfg *config.Config, sigChan chan os.Sign
 		}
 
 		return tenant.HandleMessage(ctx, msg)
+	}
+
+	if cfg.OAuthClientSecret != "" || cfg.BearerToken != "" {
+		fmt.Fprintf(os.Stderr, "[WARN] --multi-tenant ignores the configured client secret and bearer token; every request must carry its own credential\n")
 	}
 
 	if cfg.Verbose {

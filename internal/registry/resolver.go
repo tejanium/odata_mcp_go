@@ -32,11 +32,20 @@ type Resolver struct {
 	// AllowedServiceURLs are the service URLs a caller may select. Empty means
 	// callers cannot choose one, which keeps a header off outbound requests.
 	AllowedServiceURLs []string
+
+	// RequireRequestCredentials stops Defaults supplying secret material, so a
+	// request carrying no credential is refused instead of inheriting one.
+	RequireRequestCredentials bool
 }
 
 // Resolve reads credentials for one request.
 func (rs Resolver) Resolve(headers http.Header) (Credentials, error) {
 	creds := rs.Defaults
+
+	if rs.RequireRequestCredentials {
+		creds.BearerToken = ""
+		creds.ClientSecret = ""
+	}
 
 	if requested := strings.TrimSpace(headers.Get(HeaderServiceURL)); requested != "" {
 		if !rs.permits(requested) {
