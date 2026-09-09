@@ -240,6 +240,8 @@ func runBridge(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("OData service URL not provided. Use --service flag, positional argument, or ODATA_URL environment variable")
 	}
 
+	resolveCredentialsFromEnvironment(cfg)
+
 	// Multi-tenant mode takes credentials per request, so there may be none here.
 	if !cfg.MultiTenant {
 		if err := processAuthentication(cfg); err != nil {
@@ -449,7 +451,7 @@ func validateHTTPTransport(securityCfg http.SecurityConfig) error {
 }
 
 func processAuthentication(cfg *config.Config) error {
-	resolveOAuthFromEnvironment(cfg)
+	resolveCredentialsFromEnvironment(cfg)
 
 	// Check for mutually exclusive authentication options
 	authMethods := 0
@@ -555,9 +557,9 @@ func processAuthentication(cfg *config.Config) error {
 	return nil
 }
 
-// resolveOAuthFromEnvironment fills unset OAuth fields, preferring the bare
+// resolveCredentialsFromEnvironment fills unset credential fields, preferring the bare
 // OAUTH_* names the Python implementation uses over viper's ODATA_ prefix.
-func resolveOAuthFromEnvironment(cfg *config.Config) {
+func resolveCredentialsFromEnvironment(cfg *config.Config) {
 	fields := []struct {
 		target *string
 		name   string
@@ -567,6 +569,7 @@ func resolveOAuthFromEnvironment(cfg *config.Config) {
 		{&cfg.OAuthTokenURL, "OAUTH_TOKEN_URL"},
 		{&cfg.OAuthScope, "OAUTH_SCOPE"},
 		{&cfg.OAuthClientAuth, "OAUTH_CLIENT_AUTH"},
+		{&cfg.BearerToken, "BEARER_TOKEN"},
 	}
 
 	for _, field := range fields {
