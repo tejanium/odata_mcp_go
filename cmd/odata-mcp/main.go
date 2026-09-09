@@ -317,7 +317,7 @@ func runBridge(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "[VERBOSE] Header forwarding enabled - HTTP headers will be passed to OData service\n")
 			}
 		}
-		trans = http.NewStreamableHTTP(securityCfg.Addr, handler, securityCfg.Token != "", cfg.ForwardMCPHeaders)
+		trans = http.NewStreamableHTTP(securityCfg, handler, cfg.ForwardMCPHeaders)
 	case "http", "sse":
 		securityCfg, err := buildSecurityConfig(cmd)
 		if err != nil {
@@ -331,7 +331,7 @@ func runBridge(cmd *cobra.Command, args []string) error {
 		if cfg.Verbose {
 			fmt.Fprintf(os.Stderr, "[VERBOSE] Starting HTTP/SSE transport on %s\n", securityCfg.Addr)
 		}
-		trans = http.NewSSE(securityCfg.Addr, handler)
+		trans = http.NewSSE(securityCfg, handler)
 
 	case "stdio":
 		fallthrough

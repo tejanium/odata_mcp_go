@@ -14,7 +14,7 @@ import (
 
 // SSETransport implements the Transport interface for Server-Sent Events
 type SSETransport struct {
-	addr     string
+	security SecurityConfig
 	server   *http.Server
 	handler  transport.Handler
 	clients  map[string]*sseClient
@@ -36,9 +36,9 @@ type clientMessage struct {
 }
 
 // NewSSE creates a new SSE transport
-func NewSSE(addr string, handler transport.Handler) *SSETransport {
+func NewSSE(security SecurityConfig, handler transport.Handler) *SSETransport {
 	return &SSETransport{
-		addr:     addr,
+		security: security,
 		handler:  handler,
 		clients:  make(map[string]*sseClient),
 		messages: make(chan *clientMessage, 100),
@@ -56,7 +56,7 @@ func (t *SSETransport) Start(ctx context.Context) error {
 	mux.HandleFunc("/rpc", t.handleRPC)
 
 	// Health check endpoint
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(HealthPath, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
 			log.Printf("health check: failed to encode response: %v", err)
@@ -64,8 +64,8 @@ func (t *SSETransport) Start(ctx context.Context) error {
 	})
 
 	t.server = &http.Server{
-		Addr:    t.addr,
-		Handler: mux,
+		Addr:    t.security.Addr,
+		Handler: SecurityMiddleware(t.security, mux),
 	}
 
 	// Start message processor
@@ -73,7 +73,7 @@ func (t *SSETransport) Start(ctx context.Context) error {
 
 	// Start server
 	go func() {
-		if err := t.server.ListenAndServe(); err != http.ErrServerClosed {
+		if err := ListenAndServe(t.server, t.security); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("HTTP server error: %v\n", err)
 		}
 	}()
