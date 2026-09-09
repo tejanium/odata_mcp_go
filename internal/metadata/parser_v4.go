@@ -253,6 +253,7 @@ func ParseMetadataV4(data []byte, serviceRoot string) (*models.ODataMetadata, er
 		SchemaNamespace: mainSchema.Namespace,
 		ContainerName:   mainContainer.Name,
 		Version:         edmx.Version,
+		ODataVersion:    edmx.Version,
 		ParsedAt:        time.Now(),
 	}
 

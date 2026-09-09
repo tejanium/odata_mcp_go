@@ -123,6 +123,7 @@ func (b *ODataMCPBridge) initialize() error {
 	}
 
 	b.metadata = metadata
+	b.applyLegacyDateDefault()
 
 	// Generate tools
 	if err := b.generateTools(); err != nil {
@@ -530,4 +531,20 @@ func (b *ODataMCPBridge) GetTraceInfo() (*models.TraceInfo, error) {
 		RegisteredTools: tools,
 		TotalTools:      len(tools),
 	}, nil
+}
+
+// applyLegacyDateDefault picks the date encoding from the service's OData
+// version, unless the operator chose one explicitly.
+func (b *ODataMCPBridge) applyLegacyDateDefault() {
+	if b.config.LegacyDatesSet {
+		return
+	}
+
+	version := b.metadata.ODataVersion
+	b.config.LegacyDates = strings.HasPrefix(version, "2.")
+
+	if b.config.Verbose {
+		fmt.Fprintf(os.Stderr, "[VERBOSE] OData version %q: legacy date format %v\n",
+			version, b.config.LegacyDates)
+	}
 }

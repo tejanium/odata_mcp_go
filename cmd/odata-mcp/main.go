@@ -178,17 +178,16 @@ func runBridge(cmd *cobra.Command, args []string) error {
 	}
 
 	// Handle legacy dates flags
+	cfg.LegacyDatesSet = cfg.NoLegacyDates || cmd.Flags().Changed("legacy-dates")
+
 	if cfg.NoLegacyDates {
 		cfg.LegacyDates = false
 		if cfg.Verbose {
 			fmt.Fprintf(os.Stderr, "[VERBOSE] Legacy date format conversion disabled.\n")
 		}
-	} else if !cmd.Flags().Changed("legacy-dates") {
-		// Default to legacy dates for SAP compatibility
+	} else if !cfg.LegacyDatesSet {
+		// Provisional; the service's OData version decides once metadata is in.
 		cfg.LegacyDates = true
-		if cfg.Verbose {
-			fmt.Fprintf(os.Stderr, "[VERBOSE] Legacy date format enabled by default for SAP compatibility. Use --no-legacy-dates to disable.\n")
-		}
 	}
 
 	// Handle read-only mode flags
