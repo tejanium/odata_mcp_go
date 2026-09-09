@@ -5,6 +5,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -47,7 +48,8 @@ func NewODataClient(baseURL string, verbose bool) *ODataClient {
 	return &ODataClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: time.Duration(constants.DefaultTimeout) * time.Second,
+			Timeout:       time.Duration(constants.DefaultTimeout) * time.Second,
+			CheckRedirect: checkRedirect,
 		},
 		verbose: verbose,
 		isV4:    false, // Will be determined when fetching metadata
@@ -149,4 +151,30 @@ func RedactHeaders(h http.Header) http.Header {
 	}
 
 	return safe
+}
+
+// checkRedirect refuses a redirect that leaves the host the caller asked for.
+// An allow list checked before the request says nothing about where that host
+// then points, so following freely would make this a fetch-anything proxy.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after %d redirects", len(via))
+	}
+
+	origin := via[0].URL
+
+	if !strings.EqualFold(req.URL.Host, origin.Host) {
+		return fmt.Errorf("refusing redirect from %s to a different host %s", origin.Host, req.URL.Host)
+	}
+
+	// An http to https upgrade is fine; a downgrade is not.
+	if !strings.EqualFold(req.URL.Scheme, origin.Scheme) && req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect from %s to %s on %s", origin.Scheme, req.URL.Scheme, req.URL.Host)
+	}
+
+	return nil
 }
