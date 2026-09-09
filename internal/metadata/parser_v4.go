@@ -131,10 +131,10 @@ type EntitySetV4 struct {
 
 // AnnotationV4 represents an OData v4 annotation
 type AnnotationV4 struct {
-	XMLName xml.Name         `xml:"Annotation"`
-	Term    string           `xml:"Term,attr"`
-	Bool    string           `xml:"Bool,attr"`    // For simple boolean annotations
-	Record  *AnnotationRecord `xml:"Record"`       // For complex annotations
+	XMLName xml.Name          `xml:"Annotation"`
+	Term    string            `xml:"Term,attr"`
+	Bool    string            `xml:"Bool,attr"` // For simple boolean annotations
+	Record  *AnnotationRecord `xml:"Record"`    // For complex annotations
 }
 
 // AnnotationRecord represents a Record element in an annotation
@@ -361,9 +361,9 @@ func parseEntitySetV4(es EntitySetV4, namespace string) *models.EntitySet {
 		EntityType: entityTypeName,
 		// OData v4 doesn't have explicit CRUD capability attributes in metadata
 		// We assume CRUD operations are allowed unless restricted by service
-		Creatable:  true,
-		Updatable:  true,
-		Deletable:  true,
+		Creatable: true,
+		Updatable: true,
+		Deletable: true,
 		// $search support determined from Capabilities.SearchRestrictions annotation
 		// Default to false if not specified (most services don't implement it)
 		Searchable: searchable,

@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 )
 
@@ -117,4 +118,74 @@ func ValidateToken(provided, expected string) bool {
 		return true
 	}
 	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+}
+
+// HealthPath is the unauthenticated health endpoint both HTTP transports serve.
+const HealthPath = "/health"
+
+// bearerScheme is matched case-insensitively, as RFC 7235 requires.
+const bearerScheme = "bearer "
+
+// AuthenticateRequest reports whether r presents the expected MCP token as a
+// bearer credential. A blank expected token leaves the endpoint ungated.
+func AuthenticateRequest(r *http.Request, expected string) bool {
+	if expected == "" {
+		return true
+	}
+
+	header := r.Header.Get("Authorization")
+	if len(header) <= len(bearerScheme) || !strings.EqualFold(header[:len(bearerScheme)], bearerScheme) {
+		return false
+	}
+
+	return ValidateToken(strings.TrimSpace(header[len(bearerScheme):]), expected)
+}
+
+// SecurityMiddleware gates next with cfg. The health endpoint and CORS
+// preflight stay open; every other request must present the token.
+func SecurityMiddleware(cfg SecurityConfig, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+
+		if isLocalhost(r.Host) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Last-Event-ID, Authorization")
+		}
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		if r.URL.Path == HealthPath {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// An ungated endpoint stays loopback-only, mirroring the configuration
+		// ValidateHTTPSecurity enforces at startup.
+		if cfg.Token == "" && !isLocalhost(r.RemoteAddr) && !isLocalhost(r.Host) {
+			http.Error(w, "Remote connections require --mcp-token with --tls and --allow-all-interfaces", http.StatusForbidden)
+			return
+		}
+
+		if !AuthenticateRequest(r, cfg.Token) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="odata-mcp"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ListenAndServe starts srv, using TLS when cfg supplies a certificate.
+func ListenAndServe(srv *http.Server, cfg SecurityConfig) error {
+	if cfg.TLSEnabled {
+		return srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+	}
+
+	return srv.ListenAndServe()
 }

@@ -45,7 +45,7 @@ func TestEntityKeyPredicate(t *testing.T) {
 			name:         "Composite key",
 			entitySet:    "OrderItemSet",
 			key:          map[string]interface{}{"OrderID": 12345, "ItemID": "ABC"},
-			expectedPath: "/OrderItemSet(OrderID=12345,ItemID='ABC')",
+			expectedPath: "/OrderItemSet(ItemID='ABC',OrderID=12345)",
 		},
 	}
 

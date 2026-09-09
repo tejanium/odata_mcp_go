@@ -28,6 +28,13 @@ import (
 
 var cfg *config.Config
 
+// Stamped by the Makefile through -ldflags -X.
+var (
+	Version   = "dev"
+	Commit    = "none"
+	BuildTime = "unknown"
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "odata-mcp [service-url]",
 	Short: "OData to MCP Bridge - Universal OData v2 to Model Context Protocol bridge",
@@ -51,6 +58,8 @@ Operation Filtering Examples:
 }
 
 func init() {
+	rootCmd.Version = fmt.Sprintf("%s (commit %s, built %s)", Version, Commit, BuildTime)
+
 	// Load .env file if it exists (ignore error if file not found)
 	_ = godotenv.Load()
 
@@ -317,7 +326,7 @@ func runBridge(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "[VERBOSE] Header forwarding enabled - HTTP headers will be passed to OData service\n")
 			}
 		}
-		trans = http.NewStreamableHTTP(securityCfg.Addr, handler, securityCfg.Token != "", cfg.ForwardMCPHeaders)
+		trans = http.NewStreamableHTTP(securityCfg, handler, cfg.ForwardMCPHeaders)
 	case "http", "sse":
 		securityCfg, err := buildSecurityConfig(cmd)
 		if err != nil {
@@ -331,7 +340,7 @@ func runBridge(cmd *cobra.Command, args []string) error {
 		if cfg.Verbose {
 			fmt.Fprintf(os.Stderr, "[VERBOSE] Starting HTTP/SSE transport on %s\n", securityCfg.Addr)
 		}
-		trans = http.NewSSE(securityCfg.Addr, handler)
+		trans = http.NewSSE(securityCfg, handler)
 
 	case "stdio":
 		fallthrough
