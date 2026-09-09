@@ -199,7 +199,7 @@ func (c *ODataClient) fetchCSRFToken(ctx context.Context) error {
 
 	if c.verbose {
 		fmt.Fprintf(os.Stderr, "[VERBOSE] Token fetch request: %s %s\n", req.Method, req.URL.String())
-		fmt.Fprintf(os.Stderr, "[VERBOSE] Token fetch headers: %v\n", req.Header)
+		fmt.Fprintf(os.Stderr, "[VERBOSE] Token fetch headers: %v\n", RedactHeaders(req.Header))
 	}
 
 	// Don't use doRequest here to avoid retry loops - fetch token requests shouldn't retry
