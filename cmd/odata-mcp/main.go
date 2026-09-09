@@ -28,6 +28,13 @@ import (
 
 var cfg *config.Config
 
+// Stamped by the Makefile through -ldflags -X.
+var (
+	Version   = "dev"
+	Commit    = "none"
+	BuildTime = "unknown"
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "odata-mcp [service-url]",
 	Short: "OData to MCP Bridge - Universal OData v2 to Model Context Protocol bridge",
@@ -51,6 +58,8 @@ Operation Filtering Examples:
 }
 
 func init() {
+	rootCmd.Version = fmt.Sprintf("%s (commit %s, built %s)", Version, Commit, BuildTime)
+
 	// Load .env file if it exists (ignore error if file not found)
 	_ = godotenv.Load()
 
