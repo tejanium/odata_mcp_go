@@ -6,6 +6,7 @@ package client
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/zmcp/odata-mcp/internal/models"
@@ -28,11 +29,19 @@ func (c *ODataClient) buildKeyPredicate(key map[string]interface{}) string {
 		}
 	}
 
-	// Composite key
-	var parts []string
-	for k, v := range key {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, c.formatKeyValue(v)))
+	// Sorted so the same key always produces the same URL, which map order
+	// alone does not guarantee.
+	names := make([]string, 0, len(key))
+	for name := range key {
+		names = append(names, name)
 	}
+	sort.Strings(names)
+
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%s=%s", name, c.formatKeyValue(key[name])))
+	}
+
 	return strings.Join(parts, ",")
 }
 
