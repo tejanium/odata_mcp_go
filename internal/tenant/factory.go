@@ -7,8 +7,10 @@ package tenant
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/zmcp/odata-mcp/internal/bridge"
+	"github.com/zmcp/odata-mcp/internal/client"
 	"github.com/zmcp/odata-mcp/internal/config"
 	"github.com/zmcp/odata-mcp/internal/registry"
 	"github.com/zmcp/odata-mcp/internal/transport"
@@ -19,8 +21,12 @@ type Bridge struct {
 	*bridge.ODataMCPBridge
 }
 
-// HandleMessage dispatches to the bridge's own MCP server.
+// HandleMessage dispatches to the bridge's own MCP server. The caller's HTTP
+// headers have done their job by now, selecting the credential, so none of
+// them are forwarded to the OData service.
 func (b Bridge) HandleMessage(ctx context.Context, msg *transport.Message) (*transport.Message, error) {
+	ctx = context.WithValue(ctx, client.HTTPHeadersContextKey, http.Header{})
+
 	return b.GetServer().HandleMessage(ctx, msg)
 }
 

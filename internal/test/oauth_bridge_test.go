@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -194,4 +195,33 @@ func TestBridgeWithIncompleteOAuthConfigFailsUnauthenticated(t *testing.T) {
 	tokens, _, unauthorized := svc.counts()
 	assert.Equal(t, 0, tokens, "no token should be requested without a token URL")
 	assert.Greater(t, unauthorized, 0, "the service should have rejected the unauthenticated request")
+}
+
+// The token endpoint is caller-chosen in multi-tenant mode, so a redirect from
+// it must not be followed: the target would receive a POST from inside the
+// deployment, and its reply would come back in the error.
+func TestBridgeRefusesATokenEndpointThatRedirectsElsewhere(t *testing.T) {
+	svc := newOAuthProtectedService(t)
+
+	var elsewhereHits int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&elsewhereHits, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "internal page")
+	}))
+	t.Cleanup(elsewhere.Close)
+
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+"/token", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(redirecting.Close)
+
+	cfg := oauthBridgeConfig(svc)
+	cfg.OAuthTokenURL = redirecting.URL + "/oauth/token"
+
+	_, err := bridge.NewODataMCPBridge(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "refusing redirect")
+	assert.NotContains(t, err.Error(), "internal page", "the redirect target's reply must not be reflected")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&elsewhereHits), "the redirect target must never be contacted")
 }

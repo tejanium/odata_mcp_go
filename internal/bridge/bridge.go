@@ -54,6 +54,10 @@ func NewODataMCPBridge(cfg *config.Config) (*ODataMCPBridge, error) {
 			Scope:        cfg.OAuthScope,
 			ClientAuth:   cfg.OAuthClientAuth,
 			Verbose:      cfg.Verbose,
+
+			// The token endpoint is caller-chosen in multi-tenant mode, so it gets
+			// the same redirect policy as the service itself.
+			HTTPClient: client.NewHTTPClient(),
 		})
 		if err != nil {
 			return nil, err

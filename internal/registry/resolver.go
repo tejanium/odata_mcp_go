@@ -64,7 +64,13 @@ func (rs Resolver) Resolve(headers http.Header) (Credentials, error) {
 
 	creds.ClientID = firstNonEmpty(headers.Get(HeaderClientID), creds.ClientID)
 	creds.ClientSecret = firstNonEmpty(headers.Get(HeaderClientSecret), creds.ClientSecret)
-	creds.TokenURL = firstNonEmpty(headers.Get(HeaderTokenURL), creds.TokenURL)
+
+	if requested := strings.TrimSpace(headers.Get(HeaderTokenURL)); requested != "" {
+		if !rs.permitsHost(requested) {
+			return Credentials{}, fmt.Errorf("registry: %s is not on an allowed host", HeaderTokenURL)
+		}
+		creds.TokenURL = requested
+	}
 	creds.Scope = firstNonEmpty(headers.Get(HeaderScope), creds.Scope)
 
 	return creds, creds.Validate()
@@ -73,6 +79,17 @@ func (rs Resolver) Resolve(headers http.Header) (Credentials, error) {
 // permits reports whether a caller may point the bridge at raw. Scheme and host
 // are compared separately, so an allowed prefix cannot be spoofed.
 func (rs Resolver) permits(raw string) bool {
+	return rs.matchAllowed(raw, true)
+}
+
+// permitsHost is permits without the path check, for the token endpoint: it
+// lives beside the service, not under it, but must stay on the same host so
+// the bridge cannot be made to POST credentials at an arbitrary address.
+func (rs Resolver) permitsHost(raw string) bool {
+	return rs.matchAllowed(raw, false)
+}
+
+func (rs Resolver) matchAllowed(raw string, checkPath bool) bool {
 	target, err := url.Parse(raw)
 	if err != nil || target.Host == "" {
 		return false
@@ -100,7 +117,7 @@ func (rs Resolver) permits(raw string) bool {
 		if !strings.EqualFold(permitted.Host, target.Host) {
 			continue
 		}
-		if strings.HasPrefix(target.Path, permitted.Path) {
+		if !checkPath || strings.HasPrefix(target.Path, permitted.Path) {
 			return true
 		}
 	}
