@@ -114,7 +114,9 @@ func (b *ODataMCPBridge) generateUniversalDescription() string {
 	// Usage examples
 	sb.WriteString(`
 Actions:
-  info   - Service details, entity capabilities and hints (no target)
+  info   - Without target: service details and hints. With target: that
+           entity's properties, types, key and operations. Call it before
+           guessing a field name.
   list   - Query entities with filter/select/expand/orderby/top/skip
   get    - Retrieve single entity by key
   create - Create new entity
@@ -129,6 +131,7 @@ Examples:
   action="get" target="Products" params={"key":{"ID":123}}
   action="create" target="Orders" params={"data":{"CustomerID":"C001"}}
   action="call" target="ReleaseOrder" params={"OrderID":"O001"}
+  action="info" target="Products" - properties, key and operations of Products
   action="info" (no target) - service details and these hints again
 `)
 
@@ -160,13 +163,16 @@ func (b *ODataMCPBridge) handleUniversalTool(ctx context.Context, args map[strin
 		return nil, fmt.Errorf("missing required parameter: action")
 	}
 
-	// "info" describes the service itself, so it takes no target.
+	target, _ := args["target"].(string)
+
 	if action == "info" {
-		return b.handleUniversalServiceInfo()
+		if target == "" {
+			return b.handleUniversalServiceInfo()
+		}
+		return b.handleUniversalTargetInfo(target)
 	}
 
-	target, ok := args["target"].(string)
-	if !ok {
+	if target == "" {
 		return nil, fmt.Errorf("missing required parameter: target")
 	}
 
@@ -390,6 +396,108 @@ var universalActionOps = map[string]rune{
 	"call":   'A',
 }
 
+// handleUniversalTargetInfo describes one entity set or function from the
+// parsed metadata, so a caller can learn field names without fetching a row.
+func (b *ODataMCPBridge) handleUniversalTargetInfo(target string) (any, error) {
+	var info map[string]any
+	if entitySet, ok := b.metadata.EntitySets[target]; ok && b.shouldIncludeEntity(target) {
+		info = b.describeEntitySet(target, entitySet)
+	} else if function, ok := b.metadata.FunctionImports[target]; ok && b.shouldIncludeFunction(target) {
+		info = b.describeFunction(target, function)
+	} else {
+		return nil, fmt.Errorf("unknown target: %s (not an entity set or function)", target)
+	}
+
+	result, err := json.Marshal(info)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format response: %w", err)
+	}
+
+	return string(result), nil
+}
+
+func (b *ODataMCPBridge) describeEntitySet(name string, entitySet *models.EntitySet) map[string]any {
+	info := map[string]any{
+		"entity_set":  name,
+		"entity_type": entitySet.EntityType,
+		"operations":  b.entitySetOperations(entitySet),
+	}
+
+	if entityType := b.lookupEntityType(entitySet.EntityType); entityType != nil {
+		info["key"] = entityType.KeyProperties
+
+		properties := make([]map[string]any, 0, len(entityType.Properties))
+		for _, prop := range entityType.Properties {
+			properties = append(properties, map[string]any{
+				"name":     prop.Name,
+				"type":     prop.Type,
+				"nullable": prop.Nullable,
+			})
+		}
+		info["properties"] = properties
+
+		if len(b.config.AllowedEntities) == 0 && len(entityType.NavigationProps) > 0 {
+			navigation := make([]string, 0, len(entityType.NavigationProps))
+			for _, nav := range entityType.NavigationProps {
+				navigation = append(navigation, nav.Name)
+			}
+			info["navigation_properties"] = navigation
+		}
+	}
+
+	if hints := b.hintManager.GetHints(b.config.ServiceURL); hints != nil {
+		if entityHints, ok := hints["entity_hints"].(map[string]interface{}); ok {
+			if hint, ok := entityHints[name]; ok {
+				info["hints"] = hint
+			}
+		}
+	}
+
+	return info
+}
+
+func (b *ODataMCPBridge) describeFunction(name string, function *models.FunctionImport) map[string]any {
+	parameters := make([]map[string]any, 0, len(function.Parameters))
+	for _, param := range function.Parameters {
+		if param.Mode == "In" || param.Mode == "InOut" {
+			parameters = append(parameters, map[string]any{
+				"name":     param.Name,
+				"type":     param.Type,
+				"nullable": param.Nullable,
+			})
+		}
+	}
+
+	return map[string]any{
+		"function":    name,
+		"http_method": function.HTTPMethod,
+		"return_type": function.ReturnType,
+		"parameters":  parameters,
+		"callable":    !b.config.ReadOnly && (b.config.AllowModifyingFunctions() || !b.isFunctionModifying(function)),
+	}
+}
+
+// entitySetOperations lists what a caller may do to an entity set here, which
+// depends on the metadata and on the read-only and operation flags together.
+func (b *ODataMCPBridge) entitySetOperations(entitySet *models.EntitySet) []string {
+	ops := make([]string, 0, 7)
+	add := func(action string, allowed bool) {
+		if allowed && b.config.IsOperationEnabled(universalActionOps[action]) {
+			ops = append(ops, action)
+		}
+	}
+
+	add("list", true)
+	add("get", true)
+	add("count", true)
+	add("search", entitySet.Searchable)
+	add("create", entitySet.Creatable && !b.config.IsReadOnly())
+	add("update", entitySet.Updatable && !b.config.IsReadOnly())
+	add("delete", entitySet.Deletable && !b.config.IsReadOnly())
+
+	return ops
+}
+
 // handleUniversalServiceInfo handles the service_info action for universal mode
 func (b *ODataMCPBridge) handleUniversalServiceInfo() (any, error) {
 	info := map[string]any{
@@ -409,20 +517,7 @@ func (b *ODataMCPBridge) handleUniversalServiceInfo() (any, error) {
 		if !b.shouldIncludeEntity(name) {
 			continue
 		}
-		ops := []string{"list", "get", "count"}
-		if es.Searchable {
-			ops = append(ops, "search")
-		}
-		if es.Creatable && !b.config.IsReadOnly() {
-			ops = append(ops, "create")
-		}
-		if es.Updatable && !b.config.IsReadOnly() {
-			ops = append(ops, "update")
-		}
-		if es.Deletable && !b.config.IsReadOnly() {
-			ops = append(ops, "delete")
-		}
-		entities[name] = ops
+		entities[name] = b.entitySetOperations(es)
 	}
 	info["entities"] = entities
 
