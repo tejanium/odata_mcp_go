@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/zmcp/odata-mcp/internal/constants"
@@ -99,11 +100,11 @@ func (b *ODataMCPBridge) handleEntityFilter(ctx context.Context, entitySetName s
 	if orderby, ok := mappedArgs["$orderby"].(string); ok && orderby != "" {
 		options[constants.QueryOrderBy] = orderby
 	}
-	if top, ok := mappedArgs["$top"].(float64); ok {
-		options[constants.QueryTop] = fmt.Sprintf("%d", int(top))
+	if top, ok := integerOption(mappedArgs["$top"]); ok {
+		options[constants.QueryTop] = top
 	}
-	if skip, ok := mappedArgs["$skip"].(float64); ok {
-		options[constants.QuerySkip] = fmt.Sprintf("%d", int(skip))
+	if skip, ok := integerOption(mappedArgs["$skip"]); ok {
+		options[constants.QuerySkip] = skip
 	}
 
 	// Handle $count parameter - translate to appropriate version-specific parameter
@@ -131,6 +132,21 @@ func (b *ODataMCPBridge) handleEntityFilter(ctx context.Context, entitySetName s
 	}
 
 	return string(result), nil
+}
+
+// integerOption reads $top or $skip whether the model sent a number or a
+// numeric string. Silently dropping a string "50" meant fetching everything.
+func integerOption(value any) (string, bool) {
+	switch v := value.(type) {
+	case float64:
+		return fmt.Sprintf("%d", int(v)), true
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return fmt.Sprintf("%d", n), true
+		}
+	}
+
+	return "", false
 }
 
 func (b *ODataMCPBridge) handleEntityCount(ctx context.Context, entitySetName string, args map[string]any) (any, error) {
@@ -326,6 +342,11 @@ func (b *ODataMCPBridge) handleEntityUpdate(ctx context.Context, entitySetName s
 		if _, exists := key[keyProp]; !exists {
 			return nil, fmt.Errorf("missing required key property: %s", keyProp)
 		}
+	}
+
+	method = strings.ToUpper(method)
+	if method != constants.PUT && method != constants.PATCH && method != constants.MERGE {
+		return nil, fmt.Errorf("update method must be PUT, PATCH or MERGE, got %q", method)
 	}
 
 	// Convert numeric fields to strings for SAP OData v2 compatibility

@@ -182,8 +182,21 @@ func (c *ODataClient) parseErrorFromBody(body []byte, statusCode int) error {
 		return c.buildDetailedError(odataErr, statusCode, body)
 	}
 
-	// Fallback to generic error
-	return fmt.Errorf("HTTP %d: %s", statusCode, string(body))
+	// Fallback to generic error. Non-OData bodies are usually HTML error
+	// pages, so quote only enough to recognise them.
+	return fmt.Errorf("HTTP %d: %s", statusCode, truncateBody(body, errorBodyLimit))
+}
+
+// errorBodyLimit caps how much of a non-OData error body reaches the model.
+const errorBodyLimit = 1024
+
+func truncateBody(body []byte, limit int) string {
+	text := strings.TrimSpace(string(body))
+	if len(text) <= limit {
+		return text
+	}
+
+	return text[:limit] + "..."
 }
 
 // buildDetailedError creates a comprehensive error message from OData error details

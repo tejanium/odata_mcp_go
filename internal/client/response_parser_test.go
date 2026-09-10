@@ -158,3 +158,19 @@ func keysOf(m map[string]any) []string {
 	}
 	return keys
 }
+
+func TestNonODataErrorBodiesAreCapped(t *testing.T) {
+	c := &ODataClient{}
+	body := []byte("<!DOCTYPE html>" + strings.Repeat("x", 5000))
+
+	err := c.parseErrorFromBody(body, 401)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if len(err.Error()) > errorBodyLimit+64 {
+		t.Errorf("error is %d bytes, want the body capped near %d", len(err.Error()), errorBodyLimit)
+	}
+	if !strings.HasPrefix(err.Error(), "HTTP 401: <!DOCTYPE html>") {
+		t.Errorf("error = %q, want the start of the body kept", err.Error()[:40])
+	}
+}

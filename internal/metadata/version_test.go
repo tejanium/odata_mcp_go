@@ -85,3 +85,36 @@ func TestEdmxVersionDoesNotDistinguishV2FromV3(t *testing.T) {
 		t.Error("ODataVersion is identical for V2 and V3, so it cannot drive the date default")
 	}
 }
+
+const actionMetadataXML = `<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx">
+  <edmx:DataServices m:DataServiceVersion="3.0" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+    <Schema Namespace="Test" xmlns="http://schemas.microsoft.com/ado/2009/11/edm">
+      <EntityContainer Name="C" m:IsDefaultEntityContainer="true">
+        <FunctionImport Name="People_DeleteFile" ReturnType="Edm.Boolean" IsBindable="true" m:IsAlwaysBindable="true">
+          <Parameter Name="fileID" Type="Edm.String" />
+        </FunctionImport>
+        <FunctionImport Name="GetInboxCount" ReturnType="Edm.Int32" m:HttpMethod="GET" />
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>`
+
+// A V3 function import without m:HttpMethod is an action: POST, and never a
+// read. Defaulting it to GET made every such action look safe to read-only.
+func TestFunctionImportWithoutAMethodIsAnAction(t *testing.T) {
+	metadata, err := ParseMetadata([]byte(actionMetadataXML), "https://svc.example.com/odata/")
+	if err != nil {
+		t.Fatalf("ParseMetadata() error = %v", err)
+	}
+
+	action := metadata.FunctionImports["People_DeleteFile"]
+	if action == nil || action.HTTPMethod != "POST" || !action.IsAction {
+		t.Errorf("People_DeleteFile = %+v, want POST and IsAction", action)
+	}
+
+	read := metadata.FunctionImports["GetInboxCount"]
+	if read == nil || read.HTTPMethod != "GET" || read.IsAction {
+		t.Errorf("GetInboxCount = %+v, want a plain GET function", read)
+	}
+}

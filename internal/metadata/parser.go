@@ -260,9 +260,12 @@ func parseFunctionImport(fi FunctionImport) *models.FunctionImport {
 		functionImport.ReturnType = fi.ReturnType
 	}
 
-	// Default HTTP method to GET if not specified
+	// A V3 function import with no m:HttpMethod is an action, which the
+	// protocol invokes with POST and which read-only modes must treat as
+	// modifying. Only declared GET operations are safe to call as reads.
 	if functionImport.HTTPMethod == "" {
-		functionImport.HTTPMethod = constants.GET
+		functionImport.HTTPMethod = constants.POST
+		functionImport.IsAction = true
 	}
 
 	// Parse parameters

@@ -105,6 +105,17 @@ func (rs Resolver) matchAllowed(raw string, checkPath bool) bool {
 		return false
 	}
 
+	// A query or fragment has no place in a service root, and dot segments
+	// would let the server resolve the path somewhere the prefix never named.
+	if target.RawQuery != "" || target.Fragment != "" || target.ForceQuery {
+		return false
+	}
+	for _, segment := range strings.Split(target.Path, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
+	}
+
 	for _, allowed := range rs.AllowedServiceURLs {
 		permitted, err := url.Parse(strings.TrimSpace(allowed))
 		if err != nil || permitted.Host == "" {

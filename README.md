@@ -585,7 +585,7 @@ export ODATA_PASSWORD=secret
 ./odata-mcp --read-only https://my-service.com/odata/
 ./odata-mcp -ro https://my-service.com/odata/  # Short form
 
-# Hide create/update/delete but allow function imports
+# Hide create/update/delete and modifying functions; allow GET function imports
 ./odata-mcp --read-only-but-functions https://my-service.com/odata/
 ./odata-mcp -robf https://my-service.com/odata/  # Short form
 ```
@@ -714,7 +714,7 @@ The OData MCP bridge includes a flexible hint system to provide guidance for ser
 | `--trace` | Show tools and exit (debug mode) | `false` |
 | `--trace-mcp` | Enable MCP protocol trace logging | `false` |
 | `--read-only, -ro` | Hide all modifying operations | `false` |
-| `--read-only-but-functions, -robf` | Hide create/update/delete but allow functions | `false` |
+| `--read-only-but-functions, -robf` | Hide create/update/delete and modifying functions; allow GET function imports | `false` |
 | `--enable` | Enable only specified operation types (C,S,F,G,U,D,A,R) | |
 | `--disable` | Disable specified operation types (C,S,F,G,U,D,A,R) | |
 | `--hints-file` | Path to hints JSON file | `hints.json` in binary dir |
