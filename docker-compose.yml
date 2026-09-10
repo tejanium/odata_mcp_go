@@ -4,15 +4,16 @@ services:
   odata-mcp:
     build: .
     image: odata-mcp:local
-    command:
-      - --universal
-      - --multi-tenant
-      - --transport=streamable-http
-      - --http-addr=0.0.0.0:8080
-      - --allow-all-interfaces
-      - --allow-plain-http
-      - --allowed-service-urls=${ODATA_ALLOWED_SERVICE_URLS:?set ODATA_ALLOWED_SERVICE_URLS to the service URL prefixes callers may use}
-      - --hints-file=/app/hints.json
+    command: >
+      --universal
+      --multi-tenant
+      --transport=streamable-http
+      --http-addr=0.0.0.0:8080
+      --allow-all-interfaces
+      --allow-plain-http
+      --allowed-service-urls=${ODATA_ALLOWED_SERVICE_URLS:?set ODATA_ALLOWED_SERVICE_URLS to the service URL prefixes callers may use}
+      --hints-file=/app/hints.json
+      ${ODATA_MCP_EXTRA_FLAGS:-}
     ports:
       - "127.0.0.1:${ODATA_MCP_PORT:-8080}:8080"
     volumes:
