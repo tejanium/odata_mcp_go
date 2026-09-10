@@ -182,7 +182,7 @@ ODATA_ALLOWED_SERVICE_URLS="https://tenant.example.com/odata/" docker compose up
 curl -s http://127.0.0.1:8080/health
 ```
 
-`docker-compose.yml` takes three variables, from the shell or a `.env` next to it: `ODATA_ALLOWED_SERVICE_URLS` (required), `ODATA_MCP_PORT` (default `8080`) and `ODATA_HINTS_FILE` (default `./hints.json`). The container holds no service credentials; see [Multi-Tenant Mode](#multi-tenant-mode) for how clients send theirs.
+`docker-compose.yml` takes four variables, from the shell or a `.env` next to it: `ODATA_ALLOWED_SERVICE_URLS` (required), `ODATA_MCP_PORT` (default `8080`), `ODATA_HINTS_FILE` (default `./hints.json`) and `ODATA_MCP_EXTRA_FLAGS` for anything else the server accepts, such as `--verbose`, `--read-only` or `--entities People,Employments`. `--verbose` writes full response bodies to the container log, so keep it to local debugging. The container holds no service credentials; see [Multi-Tenant Mode](#multi-tenant-mode) for how clients send theirs.
 
 #### Building in WSL (Windows Subsystem for Linux)
 
