@@ -46,13 +46,10 @@ func NewODataClient(baseURL string, verbose bool) *ODataClient {
 	}
 
 	return &ODataClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout:       time.Duration(constants.DefaultTimeout) * time.Second,
-			CheckRedirect: checkRedirect,
-		},
-		verbose: verbose,
-		isV4:    false, // Will be determined when fetching metadata
+		baseURL:    baseURL,
+		httpClient: NewHTTPClient(),
+		verbose:    verbose,
+		isV4:       false, // Will be determined when fetching metadata
 	}
 }
 
@@ -151,6 +148,15 @@ func RedactHeaders(h http.Header) http.Header {
 	}
 
 	return safe
+}
+
+// NewHTTPClient returns the client every outbound call should use: bounded in
+// time and unable to follow a redirect off the host it was pointed at.
+func NewHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:       time.Duration(constants.DefaultTimeout) * time.Second,
+		CheckRedirect: checkRedirect,
+	}
 }
 
 // checkRedirect refuses a redirect that leaves the host the caller asked for.

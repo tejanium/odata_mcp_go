@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/zmcp/odata-mcp/internal/client"
 	"github.com/zmcp/odata-mcp/internal/config"
 	"github.com/zmcp/odata-mcp/internal/registry"
 	"github.com/zmcp/odata-mcp/internal/tenant"
@@ -42,6 +43,8 @@ type tenantService struct {
 	token           string
 	entitySet       string
 	metadataFetches int64
+	dataRequests    int64
+	forwardedHits   int64
 }
 
 func newTenantService(t *testing.T, token, entitySet string) *tenantService {
@@ -60,6 +63,11 @@ func newTenantService(t *testing.T, token, entitySet string) *tenantService {
 			w.Header().Set("Content-Type", "application/xml")
 			fmt.Fprintf(w, tenantMetadataTemplate, entitySet, entitySet, entitySet)
 			return
+		}
+
+		atomic.AddInt64(&service.dataRequests, 1)
+		if r.Header.Get("Cookie") != "" || r.Header.Get("X-Forwarded-For") != "" {
+			atomic.AddInt64(&service.forwardedHits, 1)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -204,6 +212,59 @@ func TestMultiTenantBuildsOneBridgePerTenantUnderLoad(t *testing.T) {
 	}
 	if bridges.Len() != 2 {
 		t.Errorf("Len() = %d, want one bridge per tenant", bridges.Len())
+	}
+}
+
+func universalToolName(t *testing.T, tenantBridge registry.Bridge) string {
+	t.Helper()
+
+	msg := &transport.Message{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/list"}
+
+	response, err := tenantBridge.HandleMessage(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	var result struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(response.Result, &result); err != nil || len(result.Tools) != 1 {
+		t.Fatalf("tools/list did not return the one universal tool: %v %s", err, response.Result)
+	}
+
+	return result.Tools[0].Name
+}
+
+// The caller's HTTP headers select the credential and nothing more. Whatever
+// else a browser or proxy attached must stop at the bridge.
+func TestTenantBridgeForwardsNoCallerHeaders(t *testing.T) {
+	acme := newTenantService(t, "acme-token", "AcmeOrders")
+	bridges := registry.New(tenant.Factory(multiTenantConfig()))
+
+	tenantBridge, err := bridges.For(context.Background(), acme.credentials())
+	if err != nil {
+		t.Fatalf("For() error = %v", err)
+	}
+
+	headers := http.Header{}
+	headers.Set("Cookie", "session=browser-cookie")
+	headers.Set("X-Forwarded-For", "10.0.0.7")
+	ctx := context.WithValue(context.Background(), client.HTTPHeadersContextKey, headers)
+
+	params := fmt.Sprintf(`{"name":%q,"arguments":{"action":"count","target":"AcmeOrders"}}`, universalToolName(t, tenantBridge))
+	call := &transport.Message{JSONRPC: "2.0", ID: json.RawMessage("2"), Method: "tools/call", Params: json.RawMessage(params)}
+
+	if _, err := tenantBridge.HandleMessage(ctx, call); err != nil {
+		t.Fatalf("HandleMessage() error = %v", err)
+	}
+
+	if atomic.LoadInt64(&acme.dataRequests) == 0 {
+		t.Fatal("the count never reached the service, so the test proves nothing")
+	}
+	if got := atomic.LoadInt64(&acme.forwardedHits); got != 0 {
+		t.Errorf("the service saw the caller's Cookie or X-Forwarded-For on %d request(s)", got)
 	}
 }
 
