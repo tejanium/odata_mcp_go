@@ -20,6 +20,7 @@ type SecurityConfig struct {
 	TLSKey             string // Path to TLS key
 	AllowAllInterfaces bool   // Explicit flag to allow 0.0.0.0/::
 	PerRequestAuth     bool   // Callers authenticate per request, so no shared token
+	AllowPlainHTTP     bool   // Serve plain HTTP off loopback, for a private network or behind a TLS proxy
 }
 
 // ValidateHTTPSecurity validates security configuration for HTTP transport.
@@ -27,7 +28,7 @@ type SecurityConfig struct {
 //
 // Security model (strict by default):
 // - Token is always required unless --no-token-localhost is set for loopback addresses
-// - Non-localhost requires token + TLS, no exceptions
+// - Non-localhost requires token + TLS, unless --allow-plain-http accepts the risk
 // - Binding to all interfaces (0.0.0.0/::) requires explicit flag + token + TLS
 func ValidateHTTPSecurity(cfg SecurityConfig) error {
 	// Check for unspecified addresses (0.0.0.0, ::, or empty host)
@@ -38,8 +39,8 @@ func ValidateHTTPSecurity(cfg SecurityConfig) error {
 		if cfg.Token == "" && !cfg.PerRequestAuth {
 			return fmt.Errorf("--mcp-token required when binding to all interfaces")
 		}
-		if !cfg.TLSEnabled {
-			return fmt.Errorf("--tls required when binding to all interfaces")
+		if !cfg.TLSEnabled && !cfg.AllowPlainHTTP {
+			return fmt.Errorf("--tls required when binding to all interfaces (or --allow-plain-http behind a TLS-terminating proxy)")
 		}
 		return nil
 	}
@@ -56,8 +57,8 @@ func ValidateHTTPSecurity(cfg SecurityConfig) error {
 	if cfg.Token == "" && !cfg.PerRequestAuth {
 		return fmt.Errorf("--mcp-token required for non-localhost binding")
 	}
-	if !cfg.TLSEnabled {
-		return fmt.Errorf("--tls required for non-localhost binding")
+	if !cfg.TLSEnabled && !cfg.AllowPlainHTTP {
+		return fmt.Errorf("--tls required for non-localhost binding (or --allow-plain-http behind a TLS-terminating proxy)")
 	}
 
 	return nil

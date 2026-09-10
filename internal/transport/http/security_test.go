@@ -53,6 +53,38 @@ func TestValidateHTTPSecurity(t *testing.T) {
 			wantErr: false,
 		},
 
+		// Plain HTTP off loopback is allowed only when asked for, and never
+		// without some form of caller authentication.
+		{
+			name: "0.0.0.0 per-request auth with --allow-plain-http - allowed",
+			config: SecurityConfig{
+				Addr:               "0.0.0.0:8080",
+				AllowAllInterfaces: true,
+				PerRequestAuth:     true,
+				AllowPlainHTTP:     true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "192.168.1.100 token with --allow-plain-http - allowed",
+			config: SecurityConfig{
+				Addr:           "192.168.1.100:8080",
+				Token:          "secret-token",
+				AllowPlainHTTP: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "0.0.0.0 with --allow-plain-http but nothing authenticating callers - rejected",
+			config: SecurityConfig{
+				Addr:               "0.0.0.0:8080",
+				AllowAllInterfaces: true,
+				AllowPlainHTTP:     true,
+			},
+			wantErr:     true,
+			errContains: "mcp-token required",
+		},
+
 		// Non-localhost without token - rejected
 		{
 			name: "192.168.1.100:8080 without token - rejected",

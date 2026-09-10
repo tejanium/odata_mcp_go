@@ -171,17 +171,18 @@ GOOS=linux GOARCH=amd64 go build -o odata-mcp-linux cmd/odata-mcp/main.go
 GOOS=windows GOARCH=amd64 go build -o odata-mcp.exe cmd/odata-mcp/main.go
 ```
 
-#### Docker Build
+#### Docker
 ```bash
-# Build Docker image
-make docker
-
-# Or manually
+# Build the image for the host platform (amd64 and arm64 both work)
 docker build -t odata-mcp .
+docker run --rm odata-mcp --version
 
-# Run in container
-docker run --rm -it odata-mcp --help
+# Run the shared multi-tenant server with docker compose, published on 127.0.0.1 only
+ODATA_ALLOWED_SERVICE_URLS="https://tenant.example.com/odata/" docker compose up -d
+curl -s http://127.0.0.1:8080/health
 ```
+
+`docker-compose.yml` takes three variables, from the shell or a `.env` next to it: `ODATA_ALLOWED_SERVICE_URLS` (required), `ODATA_MCP_PORT` (default `8080`) and `ODATA_HINTS_FILE` (default `./hints.json`). The container holds no service credentials; see [Multi-Tenant Mode](#multi-tenant-mode) for how clients send theirs.
 
 #### Building in WSL (Windows Subsystem for Linux)
 
@@ -438,8 +439,10 @@ The OData MCP bridge supports two transport mechanisms:
 >
 > **Security Requirements:**
 > - **Localhost**: Token required (`--mcp-token`)
-> - **Non-localhost**: Token + TLS required, no exceptions
+> - **Non-localhost**: Token + TLS required
 > - **All interfaces (0.0.0.0/::)**: Requires `--allow-all-interfaces` + token + TLS
+> - `--allow-plain-http` waives the TLS requirement, for a private network or behind a TLS-terminating proxy. Credentials cross that hop in clear text, so use it only where the network is trusted.
+> - In `--multi-tenant` mode each caller's own credential is the token, so `--mcp-token` is not used.
 >
 > Token can be any string - for dev, `--mcp-token dev` works fine.
 
@@ -516,6 +519,46 @@ Legacy HTTP/SSE endpoints:
    ./test_http_rpc.sh
    ```
 
+
+### Multi-Tenant Mode
+
+One process can serve many OData services. The server holds no service credentials; every MCP client sends its own with each request, and the bridge builds and caches one connection per distinct credential set (30 minutes idle, 64 entries).
+
+```bash
+./odata-mcp --universal --multi-tenant --transport streamable-http \
+  --allowed-service-urls "https://tenant-a.example.com/odata/,https://tenant-b.example.com/odata/"
+```
+
+Each request carries its credential in headers:
+
+| Header | Purpose |
+|--------|---------|
+| `X-OData-Service-Url` | The service to talk to. Must start with one of `--allowed-service-urls`, compared on scheme and host exactly; anything else is refused. |
+| `X-OData-Client-Id`, `X-OData-Client-Secret` | OAuth 2.0 client credentials. |
+| `X-OData-Token-Url` | Token endpoint. Must share scheme and host with an allowed service URL. |
+| `X-OData-Scope` | OAuth 2.0 scope. |
+| `Authorization: Bearer <token>` | Instead of client credentials: a token the client already holds. |
+
+Registering the server in Claude Code, for example:
+
+```bash
+claude mcp add --transport http my-hr http://127.0.0.1:8080/mcp \
+  -H "X-OData-Service-Url: https://tenant-a.example.com/odata/service.svc/" \
+  -H "X-OData-Client-Id: <client id>" \
+  -H "X-OData-Client-Secret: <secret>" \
+  -H "X-OData-Token-Url: https://tenant-a.example.com/oauth/token" \
+  -H "X-OData-Scope: <scope>"
+```
+
+What the server enforces in this mode:
+
+- A request with no credential is refused. A secret configured on the server (`OAUTH_CLIENT_SECRET`, `ODATA_BEARER_TOKEN`) is never lent to a caller that did not send one.
+- No header from the MCP client is forwarded to the OData service; the credential headers are consumed here.
+- `--read-only`, `--entities`, `--functions`, `--enable` and `--disable` apply to every tenant, at call time.
+- Only `--transport streamable-http` is accepted, and `--mcp-token` is rejected, since each caller is its own gate.
+- The data a caller can reach is exactly what its credential can reach on the OData service. Scope the OAuth application there; the bridge adds no authorization of its own.
+
+Binding off loopback, as a container must, requires either `--tls` or `--allow-plain-http` (see the security model above).
 
 ### Basic Usage
 
@@ -727,6 +770,9 @@ The OData MCP bridge includes a flexible hint system to provide guidance for ser
 | `--tls-cert` | Path to TLS certificate file | |
 | `--tls-key` | Path to TLS key file | |
 | `--allow-all-interfaces` | Allow binding to 0.0.0.0/:: (requires --mcp-token and --tls) | `false` |
+| `--allow-plain-http` | Serve plain HTTP on a non-loopback address (private network or behind a TLS proxy) | `false` |
+| `--multi-tenant` | Serve several OData services from one process, credentials from request headers | `false` |
+| `--allowed-service-urls` | Comma-separated service URL prefixes a multi-tenant caller may select | |
 | `--legacy-dates` | Enable legacy date format conversion | `true` |
 | `--no-legacy-dates` | Disable legacy date format conversion | `false` |
 | `--convert-dates-from-sap` | Convert SAP date formats in responses | `false` |
