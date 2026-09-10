@@ -101,7 +101,7 @@ func TestUniversalToolAdvertisesInfoAction(t *testing.T) {
 
 	odataBridge, description := universalTool(t, universalConfig(service.URL+"/odata/"))
 
-	assert.Contains(t, description, "info   - Service details")
+	assert.Contains(t, description, "info   - Without target: service details")
 
 	schema := odataBridge.GetServer().GetTools()[0].InputSchema
 	properties := schema["properties"].(map[string]any)
