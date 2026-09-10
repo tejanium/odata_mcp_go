@@ -196,6 +196,12 @@ func (b *ODataMCPBridge) handleUniversalTool(ctx context.Context, args map[strin
 		return nil, fmt.Errorf("%s operation is disabled on this server", action)
 	}
 
+	if isEntity {
+		if err := b.refuseNavigation(entitySet, params); err != nil {
+			return nil, err
+		}
+	}
+
 	// Route to appropriate handler
 	switch action {
 	case "list":
@@ -318,6 +324,57 @@ func (b *ODataMCPBridge) handleUniversalTool(ctx context.Context, args map[strin
 	default:
 		return nil, fmt.Errorf("unknown action: %s (valid: list, get, create, update, delete, count, search, call)", action)
 	}
+}
+
+// refuseNavigation keeps --entities meaningful: a query option that walks a
+// navigation property reaches an entity set the filter was meant to hide.
+func (b *ODataMCPBridge) refuseNavigation(entitySet *models.EntitySet, params map[string]any) error {
+	if len(b.config.AllowedEntities) == 0 {
+		return nil
+	}
+
+	entityType := b.lookupEntityType(entitySet.EntityType)
+	if entityType == nil {
+		return nil
+	}
+
+	for key, value := range params {
+		option := b.mapParameterToOData(key)
+		switch option {
+		case "$filter", "$select", "$expand", "$orderby":
+		default:
+			continue
+		}
+
+		text, _ := value.(string)
+		for _, nav := range entityType.NavigationProps {
+			if containsIdentifier(text, nav.Name) {
+				return fmt.Errorf("%s uses navigation property %s, which --entities does not allow", option, nav.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
+// containsIdentifier reports whether name appears in text as a whole token.
+func containsIdentifier(text, name string) bool {
+	for start := 0; ; {
+		idx := strings.Index(text[start:], name)
+		if idx < 0 {
+			return false
+		}
+		idx += start
+		end := idx + len(name)
+		if (idx == 0 || !isIdentifierByte(text[idx-1])) && (end == len(text) || !isIdentifierByte(text[end])) {
+			return true
+		}
+		start = idx + 1
+	}
+}
+
+func isIdentifierByte(c byte) bool {
+	return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // universalActionOps maps each action to the operation letter --enable and

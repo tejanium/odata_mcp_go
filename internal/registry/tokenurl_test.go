@@ -77,3 +77,24 @@ func TestResolveStillUsesTheConfiguredTokenURLWithoutAHeader(t *testing.T) {
 		t.Errorf("TokenURL = %q, want the operator's default", creds.TokenURL)
 	}
 }
+
+func TestResolveRefusesAServiceURLThatIsNotAPlainRoot(t *testing.T) {
+	tests := []string{
+		"https://tenant.example.com/odata/service.svc/?x=1",
+		"https://tenant.example.com/odata/service.svc/#frag",
+		"https://tenant.example.com/odata/../internal/",
+		"https://tenant.example.com/odata/./service.svc/",
+		"https://tenant.example.com/odata/%2e%2e/internal/",
+	}
+
+	for _, requested := range tests {
+		t.Run(requested, func(t *testing.T) {
+			headers := clientCredentialHeaders()
+			headers.Set(HeaderServiceURL, requested)
+
+			if _, err := defaultResolver().Resolve(headers); err == nil {
+				t.Errorf("Resolve() accepted %q", requested)
+			}
+		})
+	}
+}

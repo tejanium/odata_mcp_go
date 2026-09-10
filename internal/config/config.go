@@ -125,9 +125,11 @@ func (c *Config) IsReadOnly() bool {
 	return c.ReadOnly || c.ReadOnlyButFunctions
 }
 
-// AllowModifyingFunctions returns true if modifying function imports are allowed
+// AllowModifyingFunctions reports whether actions and other modifying function
+// imports may run. Both read-only modes refuse them; --read-only-but-functions
+// only keeps functions the metadata declares as GET.
 func (c *Config) AllowModifyingFunctions() bool {
-	return !c.ReadOnly
+	return !c.IsReadOnly()
 }
 
 // IsOperationEnabled checks if a specific operation type is enabled based on --enable/--disable flags

@@ -110,3 +110,110 @@ func TestUniversalToolWithEnableOnlyReadRefusesWrites(t *testing.T) {
 		}
 	}
 }
+
+func navigatingBridge() *ODataMCPBridge {
+	b := filteredBridge(&config.Config{AllowedEntities: []string{"People"}})
+	b.metadata.EntityTypes["Person"].NavigationProps = []*models.NavigationProperty{
+		{Name: "PeopleToBankDetailsCurrent"},
+		{Name: "PeopleToCompCurrent"},
+	}
+
+	return b
+}
+
+func TestUniversalToolRefusesNavigationPastTheEntityFilter(t *testing.T) {
+	tests := []struct {
+		name   string
+		action string
+		params map[string]any
+	}{
+		{"filter any", "count", map[string]any{"$filter": "PeopleToCompCurrent/any(c: c/AnnualAmount gt 100000)"}},
+		{"filter startswith on bank", "list", map[string]any{"$filter": "PeopleToBankDetailsCurrent/any(b: startswith(b/AccountNumber,'1'))"}},
+		{"expand", "list", map[string]any{"$expand": "PeopleToBankDetailsCurrent"}},
+		{"select through nav", "list", map[string]any{"$select": "PersonCode,PeopleToCompCurrent/AnnualAmount"}},
+		{"orderby through nav", "list", map[string]any{"$orderby": "PeopleToCompCurrent/AnnualAmount desc"}},
+		{"claude-friendly name", "list", map[string]any{"expand": "PeopleToCompCurrent"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := navigatingBridge().handleUniversalTool(context.Background(), map[string]any{
+				"action": tt.action, "target": "People", "params": tt.params,
+			})
+			if err == nil || !strings.Contains(err.Error(), "navigation property") {
+				t.Errorf("error = %v, want the navigation refused", err)
+			}
+		})
+	}
+}
+
+func TestUniversalToolLeavesPlainPropertiesAloneUnderTheEntityFilter(t *testing.T) {
+	b := navigatingBridge()
+	params := map[string]any{"$filter": "FamilyName eq 'PeopleToCompCurrentX'", "$select": "PersonCode"}
+
+	// A name that merely contains a navigation property's name is not a
+	// navigation. Reaching the nil client proves the guard let it through.
+	defer func() {
+		if recover() == nil {
+			t.Error("expected the call to reach the client")
+		}
+	}()
+
+	_, _ = b.handleUniversalTool(context.Background(), map[string]any{"action": "count", "target": "People", "params": params})
+}
+
+func TestUniversalToolRefusesAnUnknownUpdateVerb(t *testing.T) {
+	b := filteredBridge(&config.Config{})
+
+	_, err := b.handleUniversalTool(context.Background(), map[string]any{
+		"action": "update", "target": "People",
+		"params": map[string]any{"key": map[string]any{"PersonCode": "X"}, "data": map[string]any{"FamilyName": "Y"}, "method": "BREW"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "PUT, PATCH or MERGE") {
+		t.Errorf("error = %v, want the verb refused", err)
+	}
+}
+
+func TestIntegerOptionAcceptsNumbersAndNumericStrings(t *testing.T) {
+	tests := []struct {
+		value any
+		want  string
+		ok    bool
+	}{
+		{float64(50), "50", true},
+		{"50", "50", true},
+		{" 7 ", "7", true},
+		{"lots", "", false},
+		{map[string]any{"a": 1}, "", false},
+		{nil, "", false},
+	}
+
+	for _, tt := range tests {
+		got, ok := integerOption(tt.value)
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("integerOption(%v) = %q,%v want %q,%v", tt.value, got, ok, tt.want, tt.ok)
+		}
+	}
+}
+
+func TestReadOnlyButFunctionsRefusesActions(t *testing.T) {
+	b := filteredBridge(&config.Config{ReadOnlyButFunctions: true})
+
+	err := callUniversal(t, b, "call", "Recalculate")
+	if err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Errorf("POST function under --read-only-but-functions: error = %v, want refused", err)
+	}
+
+	desc := b.generateUniversalDescription()
+	if strings.Contains(desc, "Recalculate") || !strings.Contains(desc, "Report") {
+		t.Errorf("description should list only GET functions, got:\n%s", desc)
+	}
+
+	// The GET function is allowed, so the call reaches the nil client.
+	defer func() {
+		if recover() == nil {
+			t.Error("expected the GET function call to reach the client")
+		}
+	}()
+	_ = callUniversal(t, b, "call", "Report")
+}
