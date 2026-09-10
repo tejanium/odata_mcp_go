@@ -5,6 +5,8 @@ package client
 
 import (
 	"testing"
+
+	"github.com/zmcp/odata-mcp/internal/models"
 )
 
 func TestBuildKeyPredicateOrdersCompositePartsByName(t *testing.T) {
@@ -47,5 +49,30 @@ func TestBuildKeyPredicateIsStableAcrossCalls(t *testing.T) {
 		if got := c.buildKeyPredicate(key); got != want {
 			t.Fatalf("buildKeyPredicate() = %q on call %d, want %q every time", got, i, want)
 		}
+	}
+}
+
+func TestFormatKeyValueKeepsStringsInsideThePredicate(t *testing.T) {
+	c := &ODataClient{}
+
+	tests := []struct {
+		name  string
+		value interface{}
+		want  string
+	}{
+		{"plain code", "ZZ01", "'ZZ01'"},
+		{"apostrophe doubled and escaped", "O'Brien", "'O%27%27Brien'"},
+		{"space", "ZZ 01", "'ZZ%2001'"},
+		{"attempt to leave the predicate", "x')/Salaries?$top=1&(", "'x%27%27%29%2FSalaries%3F$top=1&%28'"},
+		{"guid untouched", models.GUIDValue("0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0"), "guid'0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0'"},
+		{"integer untouched", 42, "42"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := c.formatKeyValue(tt.value); got != tt.want {
+				t.Errorf("formatKeyValue(%v) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
 	}
 }

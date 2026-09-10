@@ -176,12 +176,24 @@ func (b *ODataMCPBridge) handleUniversalTool(ctx context.Context, args map[strin
 		params = make(map[string]any)
 	}
 
-	// Check if target is an entity set or function
+	// A target the operator filtered out is treated exactly like one that does
+	// not exist, so --entities and --functions hold at call time, not just in
+	// the description.
 	entitySet, isEntity := b.metadata.EntitySets[target]
+	if isEntity && !b.shouldIncludeEntity(target) {
+		isEntity = false
+	}
 	function, isFunction := b.metadata.FunctionImports[target]
+	if isFunction && !b.shouldIncludeFunction(target) {
+		isFunction = false
+	}
 
 	if !isEntity && !isFunction {
 		return nil, fmt.Errorf("unknown target: %s (not an entity set or function)", target)
+	}
+
+	if op, known := universalActionOps[action]; known && !b.config.IsOperationEnabled(op) {
+		return nil, fmt.Errorf("%s operation is disabled on this server", action)
 	}
 
 	// Route to appropriate handler
@@ -306,6 +318,19 @@ func (b *ODataMCPBridge) handleUniversalTool(ctx context.Context, args map[strin
 	default:
 		return nil, fmt.Errorf("unknown action: %s (valid: list, get, create, update, delete, count, search, call)", action)
 	}
+}
+
+// universalActionOps maps each action to the operation letter --enable and
+// --disable use, matching how per-entity tools are generated.
+var universalActionOps = map[string]rune{
+	"list":   'F',
+	"count":  'F',
+	"search": 'S',
+	"get":    'G',
+	"create": 'C',
+	"update": 'U',
+	"delete": 'D',
+	"call":   'A',
 }
 
 // handleUniversalServiceInfo handles the service_info action for universal mode

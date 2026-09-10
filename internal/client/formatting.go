@@ -52,9 +52,7 @@ func (c *ODataClient) formatKeyValue(value interface{}) string {
 		// SAP OData requires GUID values to be prefixed: guid'value'
 		return fmt.Sprintf("guid'%s'", string(v))
 	case string:
-		// For key predicates, don't URL encode the value inside quotes
-		// URL encoding happens at the full URL level
-		return fmt.Sprintf("'%s'", v)
+		return quoteKeyLiteral(v)
 	case int, int32, int64:
 		return fmt.Sprintf("%d", v)
 	case float32, float64:
@@ -62,8 +60,15 @@ func (c *ODataClient) formatKeyValue(value interface{}) string {
 	case bool:
 		return fmt.Sprintf("%t", v)
 	default:
-		return fmt.Sprintf("'%s'", fmt.Sprintf("%v", v))
+		return quoteKeyLiteral(fmt.Sprintf("%v", v))
 	}
+}
+
+// quoteKeyLiteral produces an OData string literal that stays inside the key
+// predicate: quotes are doubled as the grammar requires, and the rest is
+// path-escaped so a value cannot close the predicate and continue the URL.
+func quoteKeyLiteral(value string) string {
+	return "'" + url.PathEscape(strings.ReplaceAll(value, "'", "''")) + "'"
 }
 
 // formatFunctionParameter formats a function parameter for OData URL
