@@ -6,6 +6,10 @@ import "time"
 // SAP OData requires GUID values in URLs to be prefixed: guid'value'
 type GUIDValue string
 
+// DateTimeValue is an Edm.DateTime key value, written as datetime'...' in a
+// key predicate rather than as a plain quoted string.
+type DateTimeValue string
+
 // EntityProperty represents a property of an OData entity type
 type EntityProperty struct {
 	Name        string  `json:"name"`

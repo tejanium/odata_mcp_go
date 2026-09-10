@@ -16,14 +16,22 @@ import (
 	"github.com/zmcp/odata-mcp/internal/utils"
 )
 
-// wrapKeyValueForType wraps a key value with the appropriate type for OData formatting
-// For Edm.Guid properties, returns models.GUIDValue to trigger guid'...' formatting
+// wrapKeyValueForType gives a key value the type its property declares, so
+// the client can write the typed literal (guid'...', datetime'...') that
+// OData V3 requires in a key predicate.
 func wrapKeyValueForType(value any, propType string) any {
-	if propType == "Edm.Guid" {
-		if strVal, ok := value.(string); ok {
-			return models.GUIDValue(strVal)
-		}
+	strVal, ok := value.(string)
+	if !ok {
+		return value
 	}
+
+	switch propType {
+	case "Edm.Guid":
+		return models.GUIDValue(strVal)
+	case "Edm.DateTime":
+		return models.DateTimeValue(strVal)
+	}
+
 	return value
 }
 

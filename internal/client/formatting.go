@@ -51,6 +51,8 @@ func (c *ODataClient) formatKeyValue(value interface{}) string {
 	case models.GUIDValue:
 		// SAP OData requires GUID values to be prefixed: guid'value'
 		return fmt.Sprintf("guid'%s'", string(v))
+	case models.DateTimeValue:
+		return "datetime" + quoteKeyLiteral(string(v))
 	case string:
 		return quoteKeyLiteral(v)
 	case int, int32, int64:
