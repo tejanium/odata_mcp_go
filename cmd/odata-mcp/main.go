@@ -132,6 +132,7 @@ func init() {
 	rootCmd.Flags().String("tls-cert", "", "Path to TLS certificate file")
 	rootCmd.Flags().String("tls-key", "", "Path to TLS private key file")
 	rootCmd.Flags().Bool("allow-all-interfaces", false, "Allow binding to all interfaces (0.0.0.0/::) - requires token and TLS")
+	rootCmd.Flags().Bool("allow-plain-http", false, "Serve plain HTTP on a non-loopback address; only on a private network or behind a TLS-terminating proxy")
 	rootCmd.Flags().StringVar(&cfg.BearerToken, "bearer-token", "", "Bearer token presented to the OData service (overrides ODATA_BEARER_TOKEN env var)")
 	rootCmd.Flags().BoolVar(&cfg.MultiTenant, "multi-tenant", false, "Serve several OData services from one process, taking credentials from request headers")
 	rootCmd.Flags().StringVar(&cfg.AllowedServiceURLs, "allowed-service-urls", "", "Comma-separated service URLs a caller may select with the X-OData-Service-Url header")
@@ -399,6 +400,7 @@ func buildSecurityConfig(cmd *cobra.Command) (http.SecurityConfig, error) {
 	tlsCert, _ := cmd.Flags().GetString("tls-cert")
 	tlsKey, _ := cmd.Flags().GetString("tls-key")
 	allowAllInterfaces, _ := cmd.Flags().GetBool("allow-all-interfaces")
+	allowPlainHTTP, _ := cmd.Flags().GetBool("allow-plain-http")
 
 	// Load token from file if specified
 	if tokenFile != "" && token == "" {
@@ -416,6 +418,7 @@ func buildSecurityConfig(cmd *cobra.Command) (http.SecurityConfig, error) {
 		TLSCert:            tlsCert,
 		TLSKey:             tlsKey,
 		AllowAllInterfaces: allowAllInterfaces,
+		AllowPlainHTTP:     allowPlainHTTP,
 	}, nil
 }
 
@@ -442,6 +445,8 @@ func validateHTTPTransport(securityCfg http.SecurityConfig) error {
 		fmt.Fprintf(os.Stderr, "Address: %s\n", securityCfg.Addr)
 		if securityCfg.TLSEnabled {
 			fmt.Fprintf(os.Stderr, "TLS: Enabled\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "TLS: Disabled by --allow-plain-http; credentials cross this hop in clear text\n")
 		}
 		fmt.Fprintf(os.Stderr, "Token: %s\n\n", maskToken(securityCfg.Token))
 	}
